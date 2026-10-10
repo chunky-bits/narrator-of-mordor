@@ -87,11 +87,16 @@ button { font: inherit; color: inherit; }
   background: radial-gradient(circle at 35% 30%, #ffd2a1, var(--ember) 55%, var(--ember-deep));
   box-shadow: 0 0 10px var(--ember-glow);
   opacity: 0; transform: scale(.5);
-  transition: opacity .18s ease, transform .18s ease;
+  /* Fade-out (transition of the state being entered: back to hidden). */
+  transition: opacity .6s ease-in-out, transform .6s ease-in-out;
   pointer-events: none;
 }
-.seek.near .thumb, .seek.dragging .thumb { opacity: 1; transform: scale(1); }
-.seek.dragging .thumb { transform: scale(1.15); }
+.seek.near .thumb, .seek.dragging .thumb {
+  opacity: 1; transform: scale(1);
+  /* Fade-in: quicker, but long enough to read as a fade rather than a pop. */
+  transition: opacity .3s ease-out, transform .3s ease-out;
+}
+.seek.dragging .thumb { transform: scale(1.15); transition-duration: .15s; }
 
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .brand svg { width: 28px; height: 28px; flex: none; filter: drop-shadow(0 0 6px var(--ember-glow)); }
