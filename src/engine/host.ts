@@ -40,7 +40,7 @@ export class EngineHost {
         run: async () => {
           const engine = await this.getEngine();
           const t0 = performance.now();
-          const r = await engine.synthesize(req.words, req.voice, req.speed);
+          const r = await engine.synthesize(req.words, req.voice, req.speed, { reduceFunctionWords: true });
           console.debug(
             `[narmor] ${r.duration.toFixed(1)}s of speech in ${((performance.now() - t0) / 1000).toFixed(2)}s (${engine.device})`,
           );
@@ -49,6 +49,7 @@ export class EngineHost {
             pcm: encodePcm(r.audio),
             sampleRate: r.sampleRate,
             words: r.words.map((w) => [w.start, w.end] as [number, number]),
+            device: engine.device,
           };
         },
       });

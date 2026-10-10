@@ -28,6 +28,8 @@ export interface SynthesizeResponse {
   sampleRate: number;
   /** [start, end] in seconds for each input word. */
   words: [number, number][];
+  /** Device the engine runs on ('webgpu' or 'wasm'); the player sizes requests by it. */
+  device: string;
 }
 
 export interface ErrorResponse {

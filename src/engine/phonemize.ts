@@ -124,3 +124,44 @@ export async function phonemizeChunk(text: string, lang: Lang): Promise<string> 
   cache.set(key, ph);
   return ph;
 }
+
+// Words that are normally unstressed in running speech. Phonemised in isolation,
+// espeak gives every word primary stress and its citation form ("a" → ˈeɪ, "to" → tˈuː),
+// which makes the rhythm even and flat. Kokoro was trained on running speech where
+// these words are reduced, so we reduce them back.
+const UNSTRESSED = new Set([
+  'the', 'a', 'an', 'and', 'or', 'nor', 'but', 'of', 'to', 'in', 'on', 'at', 'by', 'for', 'from',
+  'with', 'as', 'into', 'onto', 'than', 'is', 'are', 'was', 'were', 'be', 'been', 'am', 'it',
+  'its', "it's", 'his', 'her', 'him', 'them', 'their', 'they', 'we', 'he', 'she', 'you', 'your',
+  'my', 'me', 'our', 'us', 'i', "i'm", "i've", "i'll", "i'd", 'do', 'does', 'did', 'have', 'has',
+  'had', 'will', 'would', 'can', 'could', 'should', 'shall', 'may', 'might', 'must', 'that',
+  'this', 'so', 'if', 'there', 'some',
+]);
+
+/** Reduced vowel forms for the most frequent function words (stress already removed). */
+const REDUCED: Record<string, Record<Lang, string>> = {
+  the: { a: 'ðə', b: 'ðə' },
+  a: { a: 'ə', b: 'ə' },
+  an: { a: 'ən', b: 'ən' },
+  to: { a: 'tə', b: 'tə' },
+  for: { a: 'fɚ', b: 'fə' },
+  of: { a: 'əv', b: 'əv' },
+  from: { a: 'fɹəm', b: 'fɹəm' },
+  and: { a: 'ənd', b: 'ənd' },
+  than: { a: 'ðən', b: 'ðən' },
+};
+
+/**
+ * Turn the isolated pronunciation of a function word into its unstressed running-speech
+ * form; "not" is demoted to secondary stress. Other words are returned unchanged.
+ */
+export function reduceFunctionWord(text: string, phonemes: string, lang: Lang): string {
+  const bare = text.toLowerCase().replace(/[‘’]/g, "'").replace(/^[^a-z']+|[^a-z']+$/g, '');
+  if (bare === 'not') return phonemes.replace('ˈ', 'ˌ');
+  if (!UNSTRESSED.has(bare)) return phonemes;
+  // Keep attached punctuation (e.g. the comma in "it,") around the replaced core.
+  const m = /^([^a-zɐ-ʒæðŋθɚɪʊʌɔəɛɜɑɒˈˌ]*)(.*?)([^a-zɐ-ʒæðŋθɚɪʊʌɔəɛɜɑɒːˈˌ]*)$/u.exec(phonemes);
+  if (!m) return phonemes;
+  const core = REDUCED[bare]?.[lang] ?? m[2].replace(/[ˈˌ]/g, '');
+  return m[1] + core + m[3];
+}

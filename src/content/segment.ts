@@ -24,6 +24,8 @@ export interface Sentence {
   words: Word[];
   /** Paragraph number (0-based, ascending). Lists and tables count as one paragraph. */
   paragraph: number;
+  /** Part of a heading (h1–h6 or role="heading"); followed by a longer pause. */
+  heading: boolean;
 }
 
 export function toRange(span: Span): Range {
@@ -57,6 +59,7 @@ const INLINE_DISPLAYS = new Set(['inline', 'inline-block', 'inline-flex', 'inlin
 interface Run {
   /** Paragraph grouping key: the block, or the enclosing list / table. */
   group: Element;
+  heading: boolean;
   text: string;
   /** String offset → DOM position mapping, one entry per contributing text node. */
   parts: { start: number; node: Text; nodeOffset: number; length: number }[];
@@ -83,7 +86,7 @@ export function collectSentences(roots: Node[], opts: CollectOptions): Sentence[
     }
     let pending: { start: number; end: number } | null = null;
     const flush = (seg: { start: number; end: number }) => {
-      const s = buildSentence(run, seg.start, seg.end, paragraph);
+      const s = buildSentence(run, seg.start, seg.end, paragraph, run.heading);
       if (s) sentences.push(s);
     };
     for (const seg of segmenter.segment(run.text)) {
@@ -118,7 +121,7 @@ function endsWithAbbreviation(text: string): boolean {
 /** Lists/tables up to this many characters are one paragraph; longer ones split per item. */
 const GROUP_MAX_CHARS = 1500;
 
-function buildSentence(run: Run, start: number, end: number, paragraph: number): Sentence | null {
+function buildSentence(run: Run, start: number, end: number, paragraph: number, heading: boolean): Sentence | null {
   const text = run.text.slice(start, end);
   if (!/[\p{L}\p{N}]/u.test(text)) return null;
 
@@ -138,7 +141,7 @@ function buildSentence(run: Run, start: number, end: number, paragraph: number):
     words.push({ text: m[0], highlight });
   }
   if (first < 0) return null;
-  return { span: span(run, first, last), words, paragraph };
+  return { span: span(run, first, last), words, paragraph, heading };
 }
 
 function span(run: Run, start: number, end: number): Span {
@@ -236,7 +239,12 @@ function collectRuns(roots: Node[], opts: CollectOptions): Run[] {
     const block = findBlock(parent);
     if (block !== currentBlock) {
       endRun();
-      current = { group: paragraphGroup(block), text: '', parts: [] };
+      current = {
+        group: paragraphGroup(block),
+        heading: Boolean(block.closest('h1, h2, h3, h4, h5, h6, [role="heading"]')),
+        text: '',
+        parts: [],
+      };
       currentBlock = block;
     }
     const run = current!;

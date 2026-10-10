@@ -44,6 +44,21 @@ phonemised separately, so the engine knows exactly which tokens belong to which 
 and converts the durations into word start/end times. The page plays the audio in its
 own `AudioContext` and highlights from that audio clock.
 
+**Natural rhythm.** Because words are phonemised one by one (needed for exact
+timing), espeak would give every word full stress and its dictionary form ("for a" →
+"for AY"). Common function words ("the, a, to, for, of, and…") are therefore replaced
+by their unstressed running-speech forms, as in the speech Kokoro was trained on.
+
+**Chunked synthesis.** Several sentences per request give the model context for more
+natural intonation, so text is synthesised in chunks of whole sentences within a
+paragraph: up to 500 tokens on WebGPU, 250 on the WASM fallback. After a start or seek
+the first chunk is a single sentence (sound within ~1 s), and each following chunk may
+grow to 4× (WebGPU) / 1.6× (WASM) the previous one, so it is ready before the previous
+one ends. A chunk plays as one continuous audio source; the current sentence is derived
+from the word timings, so seeking within a generated chunk is instant. Paragraph ends
+get a 0.4 s pause and headings 0.6 s. When the bar opens, the first two chunks of the
+page are prepared in the background.
+
 **Highlighting** uses the CSS Custom Highlight API, so the page's DOM is never
 modified. Colours are derived from the composited background behind the text:
 the sentence gets a lightness shift in the same hue family, the word a different hue
@@ -55,6 +70,7 @@ with a stronger shift, both adjusted to keep the site's text colour readable.
 npm run dev          # Vite dev server; open http://localhost:5173/harness/
 npm run typecheck
 npm run test:engine  # synthesises a sentence in Node, prints word timings, writes test.wav
+npx tsx scripts/make-samples.ts  # renders A/B narration samples into samples/ (open samples/index.html)
 ```
 
 The harness page runs the content script and the engine together with a small

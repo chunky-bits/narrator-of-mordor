@@ -6,6 +6,8 @@ export interface Synthesis {
   words: [number, number][];
   /** Length of the audio in seconds. */
   duration: number;
+  /** Device the engine runs on ('webgpu' or 'wasm'). */
+  device: string;
 }
 
 export type EngineSend = (req: EngineRequest) => Promise<SynthesizeResponse | ErrorResponse>;
@@ -34,6 +36,7 @@ export class EngineClient {
     return {
       words: res.words,
       duration: pcm.length / res.sampleRate,
+      device: res.device,
       buffer: (ctx) => {
         const buf = ctx.createBuffer(1, pcm.length, res.sampleRate);
         buf.copyToChannel(pcm, 0);

@@ -5,7 +5,7 @@
 // so we know exactly which tokens belong to which word and can turn the durations
 // into word start/end times in the generated audio.
 import { env, StyleTextToSpeech2Model, Tensor } from '@huggingface/transformers';
-import { phonemizeChunk, type Lang } from './phonemize';
+import { phonemizeChunk, reduceFunctionWord, type Lang } from './phonemize';
 
 export const SAMPLE_RATE = 24000;
 const PAD_ID = 0;
@@ -37,6 +37,17 @@ export interface SynthesisResult {
   /** One entry per input word, in input order. */
   words: WordTiming[];
   duration: number;
+}
+
+/**
+ * Promote a word to primary stress (like misaki's "+2" emphasis): words espeak leaves
+ * unstressed — typically function words such as "not" or "you" — gain a stress mark.
+ */
+function emphasize(ph: string): string {
+  if (ph.includes('ˈ')) return ph;
+  if (ph.includes('ˌ')) return ph.replace('ˌ', 'ˈ');
+  const vowel = ph.search(/[aeiouæɑɐɒɔəɛɜɪʊʌɚᵻ]/);
+  return vowel < 0 ? ph : `${ph.slice(0, vowel)}ˈ${ph.slice(vowel)}`;
 }
 
 export class KokoroEngine {
@@ -82,6 +93,18 @@ export class KokoroEngine {
     return v;
   }
 
+  /** Register a voice mixed from others, e.g. [['af_heart', 0.7], ['af_bella', 0.3]]. */
+  async blendVoices(id: string, parts: [string, number][]): Promise<void> {
+    const sources = await Promise.all(parts.map(([v]) => this.voice(v)));
+    const total = parts.reduce((n, [, w]) => n + w, 0);
+    const mix = new Float32Array(sources[0].length);
+    sources.forEach((src, k) => {
+      const w = parts[k][1] / total;
+      for (let i = 0; i < mix.length; i++) mix[i] += src[i] * w;
+    });
+    this.voices.set(id, mix);
+  }
+
   private tokenize(phonemes: string): number[] {
     const ids: number[] = [];
     for (const ch of phonemes) {
@@ -95,10 +118,25 @@ export class KokoroEngine {
    * Synthesise a list of words (whitespace-delimited chunks of a sentence, punctuation
    * attached). Returns audio plus the exact time span of every word.
    */
-  async synthesize(words: string[], voice: string, speed: number): Promise<SynthesisResult> {
+  async synthesize(
+    words: string[],
+    voice: string,
+    speed: number,
+    opts: {
+      /** Per word: give it primary stress (author emphasis such as <em>). */
+      emphasis?: boolean[];
+      /** Use unstressed running-speech forms of function words ("the", "to", …). */
+      reduceFunctionWords?: boolean;
+    } = {},
+  ): Promise<SynthesisResult> {
     const lang: Lang = voice.startsWith('b') ? 'b' : 'a';
     const tokenized = await Promise.all(
-      words.map(async (w) => this.tokenize(await phonemizeChunk(w, lang))),
+      words.map(async (w, i) => {
+        let ph = await phonemizeChunk(w, lang);
+        if (opts.emphasis?.[i]) ph = emphasize(ph);
+        else if (opts.reduceFunctionWords) ph = reduceFunctionWord(w, ph, lang);
+        return this.tokenize(ph);
+      }),
     );
 
     // Group words into model calls that fit the context window.
