@@ -61,10 +61,12 @@ button { font: inherit; color: inherit; }
   box-shadow: 0 -8px 24px rgba(0, 0, 0, .35);
 }
 .progress {
-  position: absolute; left: 0; top: -1px; height: 2px; width: 0;
+  position: absolute; left: 0; top: -1px; height: 2px; width: 100%;
   background: linear-gradient(90deg, var(--ember-deep), var(--ember));
   box-shadow: 0 0 8px var(--ember-glow);
-  transition: width .4s ease;
+  /* Driven every animation frame from the audio clock; no CSS transition. */
+  transform: scaleX(0);
+  transform-origin: 0 50%;
 }
 
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
@@ -267,12 +269,19 @@ export class Bar {
     for (const btn of this.skipBtns) btn.disabled = state === 'idle';
     this.stateText =
       detail ?? { idle: 'Ready', loading: 'Preparing speech…', playing: 'Reading', paused: 'Paused' }[state];
-    if (state === 'idle') this.setProgress(-1, 0);
+    if (state === 'idle') {
+      this.setProgress(-1, 0);
+      this.setPosition(0);
+    }
     if (!this.errorTimer) this.renderStatus(this.stateText);
   }
 
+  setPosition(fraction: number): void {
+    const value = `scaleX(${Math.min(1, Math.max(0, fraction)).toFixed(5)})`;
+    if (this.progressEl.style.transform !== value) this.progressEl.style.transform = value;
+  }
+
   setProgress(index: number, total: number): void {
-    this.progressEl.style.width = total ? `${((index + 1) / total) * 100}%` : '0';
     this.countEl.textContent = total ? `${index + 1} / ${total}` : '';
   }
 

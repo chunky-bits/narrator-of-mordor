@@ -12,7 +12,10 @@ export type PlayerState = 'idle' | 'loading' | 'playing' | 'paused';
 
 export interface PlayerEvents {
   onState(state: PlayerState, detail?: string): void;
+  /** Sentence index changed (for the "3 / 42" counter). */
   onProgress(index: number, total: number): void;
+  /** Reading position as a fraction 0–1 (character-weighted); updated every frame. */
+  onPosition(fraction: number): void;
   onError(message: string): void;
 }
 
@@ -24,6 +27,10 @@ const LOOKAHEAD = 2;
 const REWIND_THRESHOLD = 2;
 /** Pre-generated first sentences kept around (page + recent selections). */
 const MAX_PREPARED = 3;
+
+function sentenceChars(s: Sentence): number {
+  return s.words.reduce((n, w) => n + w.text.length + 1, 0);
+}
 
 export class Player {
   state: PlayerState = 'idle';
@@ -50,6 +57,14 @@ export class Player {
   private playSeq = 0;
   /** Audio length of each sentence synthesised in this reading (for Back's 2 s rule). */
   private durations = new Map<number, number>();
+  /**
+   * Progress weights: characters before each sentence (prefix sums) and in total.
+   * Characters track speaking time much better than word counts do.
+   */
+  private charOffsets: number[] = [];
+  private totalChars = 0;
+  /** Audio length of the sentence currently playing. */
+  private currentDuration = 0;
 
   constructor(
     private engine: EngineClient,
@@ -207,6 +222,12 @@ export class Player {
     this.selection.hide();
     this.sentences = sentences;
     this.durations.clear();
+    this.charOffsets = [];
+    this.totalChars = 0;
+    for (const s of sentences) {
+      this.charOffsets.push(this.totalChars);
+      this.totalChars += sentenceChars(s);
+    }
     this.session = Math.random().toString(36).slice(2);
     this.cache.clear();
     void this.playIndex(0);
@@ -304,6 +325,7 @@ export class Player {
   private showSentence(i: number): void {
     this.index = i;
     this.events.onProgress(i, this.sentences.length);
+    this.events.onPosition(this.charOffsets[i] / Math.max(this.totalChars, 1));
     const sentence = this.sentences[i];
     this.currentWord = -1;
     this.highlighter.setWord(null);
@@ -388,6 +410,7 @@ export class Player {
     if (this.state === 'paused') return; // resume() will call playIndex again
 
     this.durations.set(i, synthesis.duration);
+    this.currentDuration = synthesis.duration;
     const ctx = this.ctx!;
     const source = ctx.createBufferSource();
     source.buffer = synthesis.buffer(ctx);
@@ -409,14 +432,21 @@ export class Player {
   private tick = (): void => {
     cancelAnimationFrame(this.raf);
     if (this.state !== 'playing' || !this.ctx) return;
+    const t = this.ctx.currentTime - this.startedAt;
+    // Last word that has started; it stays lit through the pause that follows it.
+    let w = -1;
+    for (let k = 0; k < this.words.length; k++) {
+      if (this.words[k][0] <= t) w = k;
+      else break;
+    }
+
+    // Constant speed through each sentence's audio (following individual word timings
+    // looks jerky), arriving at the sentence's end exactly when its audio ends.
+    const through = this.currentDuration > 0 ? Math.min(1, Math.max(0, t / this.currentDuration)) : 0;
+    const chars = sentenceChars(this.sentences[this.index]);
+    this.events.onPosition((this.charOffsets[this.index] + chars * through) / Math.max(this.totalChars, 1));
+
     if (this.settings.wordHighlight) {
-      const t = this.ctx.currentTime - this.startedAt;
-      // Last word that has started; it stays lit through the pause that follows it.
-      let w = -1;
-      for (let k = 0; k < this.words.length; k++) {
-        if (this.words[k][0] <= t) w = k;
-        else break;
-      }
       if (w !== this.currentWord) {
         this.currentWord = w;
         const span = w >= 0 ? this.sentences[this.index].words[w].highlight : null;

@@ -41,6 +41,7 @@ export function init(send: EngineSend = chromeEngineSend): void {
       {
         onState: (state, detail) => bar.setState(state, detail),
         onProgress: (i, total) => bar.setProgress(i, total),
+        onPosition: (fraction) => bar.setPosition(fraction),
         onError: (message) => bar.showError(message),
       },
       () => BAR_HEIGHT,
