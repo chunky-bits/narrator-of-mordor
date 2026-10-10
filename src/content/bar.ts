@@ -1,0 +1,335 @@
+// The bottom navigation bar and its settings menu, isolated in a closed shadow root
+// so page styles cannot reach in (and ours cannot leak out).
+import type { Settings } from '../shared/settings';
+import { VOICES } from '../shared/voices';
+import type { PlayerState } from './player';
+
+export const BAR_HEIGHT = 56;
+
+export interface BarCallbacks {
+  onPlayPause(): void;
+  onSettingsChange(settings: Settings): void;
+}
+
+const ICONS = {
+  play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>',
+  pause: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="5" width="4" height="14" rx="1.2"/><rect x="13.5" y="5" width="4" height="14" rx="1.2"/></svg>',
+  gear: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+  eye: '<svg viewBox="0 0 32 32" aria-hidden="true"><defs><radialGradient id="nm-iris" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#ffe08a"/><stop offset=".45" stop-color="#ff8a1f"/><stop offset="1" stop-color="#b8300a"/></radialGradient></defs><path d="M2 16C6.5 8.5 11 6 16 6s9.5 2.5 14 10c-4.5 7.5-9 10-14 10S6.5 23.5 2 16z" fill="url(#nm-iris)"/><path d="M16 8.5c1.1 2.2 1.6 4.7 1.6 7.5s-.5 5.3-1.6 7.5c-1.1-2.2-1.6-4.7-1.6-7.5s.5-5.3 1.6-7.5z" fill="#140c08"/></svg>',
+};
+
+const CSS = /* css */ `
+:host {
+  all: initial;
+  position: fixed !important;
+  left: 0; right: 0; bottom: 0;
+  z-index: 2147483647 !important;
+  display: block !important;
+  --bg: #15110e;
+  --bg-raised: #1f1915;
+  --line: #3a2e25;
+  --text: #f3e9df;
+  --muted: #a8968a;
+  --ember: #ff7a1a;
+  --ember-deep: #c2410c;
+  --ember-glow: rgba(255, 122, 26, .45);
+  font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--text);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+button { font: inherit; color: inherit; }
+
+.bar {
+  position: relative;
+  height: ${BAR_HEIGHT}px;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  background: linear-gradient(180deg, #1b1612 0%, var(--bg) 100%);
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, .35);
+}
+.progress {
+  position: absolute; left: 0; top: -1px; height: 2px; width: 0;
+  background: linear-gradient(90deg, var(--ember-deep), var(--ember));
+  box-shadow: 0 0 8px var(--ember-glow);
+  transition: width .4s ease;
+}
+
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.brand svg { width: 28px; height: 28px; flex: none; filter: drop-shadow(0 0 6px var(--ember-glow)); }
+.titles { display: flex; flex-direction: column; min-width: 0; }
+.title {
+  font-weight: 650; font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
+  white-space: nowrap;
+}
+.status { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.status.error { color: #ff9b7a; }
+
+.play {
+  width: 42px; height: 42px; border-radius: 50%;
+  display: grid; place-items: center;
+  border: none; cursor: pointer;
+  background: radial-gradient(circle at 35% 30%, #ffb15c, var(--ember) 45%, var(--ember-deep));
+  color: #1a0d05;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.08) inset, 0 0 14px var(--ember-glow);
+  transition: transform .12s ease, box-shadow .2s ease;
+  position: relative;
+}
+.play:hover { transform: scale(1.06); box-shadow: 0 0 0 1px rgba(255,255,255,.12) inset, 0 0 22px var(--ember-glow); }
+.play:active { transform: scale(.96); }
+.play:focus-visible, .icon-btn:focus-visible, .switch:focus-visible, select:focus-visible, input:focus-visible {
+  outline: 2px solid var(--ember); outline-offset: 2px;
+}
+.play svg { width: 20px; height: 20px; fill: currentColor; }
+.play.loading::after {
+  content: ""; position: absolute; inset: -5px; border-radius: 50%;
+  border: 2px solid transparent; border-top-color: var(--ember); border-right-color: var(--ember);
+  animation: spin .9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.right { display: flex; justify-content: flex-end; align-items: center; gap: 10px; }
+.count { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; }
+.icon-btn {
+  width: 36px; height: 36px; border-radius: 10px; border: 1px solid transparent;
+  background: transparent; display: grid; place-items: center; cursor: pointer; color: var(--muted);
+  transition: background .15s, color .15s, border-color .15s;
+}
+.icon-btn:hover, .icon-btn[aria-expanded="true"] { background: var(--bg-raised); color: var(--text); border-color: var(--line); }
+.icon-btn svg { width: 19px; height: 19px; }
+.icon-btn[aria-expanded="true"] svg { transform: rotate(45deg); transition: transform .3s ease; }
+
+.panel {
+  position: absolute; right: 12px; bottom: calc(100% + 10px);
+  width: min(320px, calc(100vw - 24px));
+  max-height: min(70vh, 560px); overflow: auto;
+  background: var(--bg-raised);
+  border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: 0 18px 48px rgba(0,0,0,.5);
+  padding: 6px 0 10px;
+  transform-origin: bottom right;
+  animation: rise .16s ease-out;
+}
+.panel[hidden] { display: none; }
+@keyframes rise { from { opacity: 0; transform: translateY(6px) scale(.98); } }
+.section { padding: 10px 16px 4px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--ember); font-weight: 650; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 16px; }
+.row label { cursor: pointer; }
+.row .hint { display: block; color: var(--muted); font-size: 11.5px; }
+.row.stack { flex-direction: column; align-items: stretch; gap: 6px; }
+.row.stack .head { display: flex; justify-content: space-between; }
+.value { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.switch {
+  flex: none; width: 38px; height: 22px; border-radius: 999px; border: 1px solid var(--line);
+  background: #2c241e; position: relative; cursor: pointer; padding: 0;
+  transition: background .2s, border-color .2s;
+}
+.switch::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--muted); transition: transform .2s ease, background .2s;
+}
+.switch[aria-checked="true"] { background: var(--ember-deep); border-color: var(--ember); }
+.switch[aria-checked="true"]::after { transform: translateX(16px); background: #fff4ea; }
+
+select {
+  width: 100%; height: 34px; border-radius: 8px; border: 1px solid var(--line);
+  background: #2a221c; color: var(--text); padding: 0 10px; font: inherit;
+}
+input[type=range] { width: 100%; accent-color: var(--ember); }
+
+@media (max-width: 560px) {
+  .title, .count { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+`;
+
+export class Bar {
+  readonly host: HTMLElement;
+  private root: ShadowRoot;
+  private playBtn: HTMLButtonElement;
+  private gearBtn: HTMLButtonElement;
+  private panel: HTMLElement;
+  private statusEl: HTMLElement;
+  private countEl: HTMLElement;
+  private progressEl: HTMLElement;
+  private settings: Settings;
+  private errorTimer = 0;
+  private stateText = 'Ready';
+
+  constructor(settings: Settings, private cb: BarCallbacks) {
+    this.settings = settings;
+    this.host = document.createElement('narrator-of-mordor');
+    this.root = this.host.attachShadow({ mode: 'closed' });
+    this.root.innerHTML = `
+      <style>${CSS}</style>
+      <div class="bar" role="toolbar" aria-label="Narrator of Mordor">
+        <div class="progress"></div>
+        <div class="brand">
+          ${ICONS.eye}
+          <div class="titles">
+            <span class="title">Narrator of Mordor</span>
+            <span class="status" role="status" aria-live="polite">Ready</span>
+          </div>
+        </div>
+        <button class="play" type="button" aria-label="Play">${ICONS.play}</button>
+        <div class="right">
+          <span class="count"></span>
+          <button class="icon-btn gear" type="button" aria-label="Settings" aria-expanded="false" aria-controls="nm-panel">${ICONS.gear}</button>
+        </div>
+        <div class="panel" id="nm-panel" role="dialog" aria-label="Narrator settings" hidden></div>
+      </div>`;
+    this.playBtn = this.root.querySelector('.play')!;
+    this.gearBtn = this.root.querySelector('.gear')!;
+    this.panel = this.root.querySelector('.panel')!;
+    this.statusEl = this.root.querySelector('.status')!;
+    this.countEl = this.root.querySelector('.count')!;
+    this.progressEl = this.root.querySelector('.progress')!;
+
+    // Keep the page's text selection when pressing the bar buttons.
+    for (const btn of [this.playBtn, this.gearBtn]) btn.addEventListener('mousedown', (e) => e.preventDefault());
+    this.playBtn.addEventListener('click', () => this.cb.onPlayPause());
+    this.gearBtn.addEventListener('click', () => this.togglePanel());
+
+    // Keys typed in the bar should not trigger the page's own shortcuts.
+    this.host.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !this.panel.hidden) {
+        this.togglePanel(false);
+        this.gearBtn.focus();
+      }
+      e.stopPropagation();
+    });
+    document.addEventListener('pointerdown', this.onOutsidePointer, true);
+
+    this.renderPanel();
+  }
+
+  mount(): void {
+    document.documentElement.append(this.host);
+  }
+
+  unmount(): void {
+    document.removeEventListener('pointerdown', this.onOutsidePointer, true);
+    this.host.remove();
+  }
+
+  setState(state: PlayerState, detail?: string): void {
+    this.host.dataset.state = state;
+    const playing = state === 'playing' || state === 'loading';
+    this.playBtn.innerHTML = playing ? ICONS.pause : ICONS.play;
+    this.playBtn.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+    this.playBtn.classList.toggle('loading', state === 'loading');
+    this.stateText =
+      detail ?? { idle: 'Ready', loading: 'Preparing speech…', playing: 'Reading', paused: 'Paused' }[state];
+    if (state === 'idle') this.setProgress(-1, 0);
+    if (!this.errorTimer) this.renderStatus(this.stateText);
+  }
+
+  setProgress(index: number, total: number): void {
+    this.progressEl.style.width = total ? `${((index + 1) / total) * 100}%` : '0';
+    this.countEl.textContent = total ? `${index + 1} / ${total}` : '';
+  }
+
+  showError(message: string): void {
+    clearTimeout(this.errorTimer);
+    this.renderStatus(message, true);
+    this.errorTimer = window.setTimeout(() => {
+      this.errorTimer = 0;
+      this.renderStatus(this.stateText);
+    }, 5000);
+  }
+
+  setSettings(settings: Settings): void {
+    // Ignore echoes of our own changes so sliders aren't re-rendered mid-drag.
+    if (JSON.stringify(settings) === JSON.stringify(this.settings)) return;
+    this.settings = settings;
+    this.renderPanel();
+  }
+
+  private renderStatus(text: string, error = false): void {
+    this.statusEl.textContent = text;
+    this.statusEl.classList.toggle('error', error);
+  }
+
+  private onOutsidePointer = (e: PointerEvent): void => {
+    if (!this.panel.hidden && !e.composedPath().includes(this.host)) this.togglePanel(false);
+  };
+
+  private togglePanel(open = this.panel.hidden): void {
+    this.panel.hidden = !open;
+    this.gearBtn.setAttribute('aria-expanded', String(open));
+  }
+
+  private update(patch: Partial<Settings>): void {
+    this.settings = { ...this.settings, ...patch };
+    this.cb.onSettingsChange(this.settings);
+  }
+
+  private renderPanel(): void {
+    const s = this.settings;
+    const sw = (key: keyof Settings, label: string, hint: string) => `
+      <div class="row">
+        <label for="nm-${key}">${label}<span class="hint">${hint}</span></label>
+        <button class="switch" id="nm-${key}" type="button" role="switch" data-key="${key}" aria-checked="${s[key]}"></button>
+      </div>`;
+    const groups = (['US', 'UK'] as const)
+      .map(
+        (accent) =>
+          `<optgroup label="${accent === 'US' ? 'American English' : 'British English'}">` +
+          VOICES.filter((v) => v.accent === accent)
+            .map((v) => `<option value="${v.id}" ${v.id === s.voice ? 'selected' : ''}>${v.name} (${v.gender})</option>`)
+            .join('') +
+          '</optgroup>',
+      )
+      .join('');
+
+    this.panel.innerHTML = `
+      <div class="section">Highlighting</div>
+      ${sw('sentenceHighlight', 'Highlight sentence', 'Tint the sentence being read')}
+      ${sw('wordHighlight', 'Highlight word', 'Follow each spoken word')}
+      <div class="section">Reading</div>
+      ${sw('articleMode', 'Main article only', 'Skip menus, sidebars and footers')}
+      ${sw('autoScroll', 'Auto-scroll', 'Keep the spoken text in view')}
+      <div class="section">Voice</div>
+      <div class="row stack">
+        <label for="nm-voice">Voice</label>
+        <select id="nm-voice">${groups}</select>
+      </div>
+      <div class="row stack">
+        <div class="head"><label for="nm-speed">Speed</label><span class="value" data-for="speed">${s.speed.toFixed(2)}×</span></div>
+        <input id="nm-speed" type="range" min="0.5" max="2" step="0.05" value="${s.speed}">
+      </div>
+      <div class="row stack">
+        <div class="head"><label for="nm-volume">Volume</label><span class="value" data-for="volume">${Math.round(s.volume * 100)}%</span></div>
+        <input id="nm-volume" type="range" min="0" max="1" step="0.01" value="${s.volume}">
+      </div>`;
+
+    for (const btn of this.panel.querySelectorAll<HTMLButtonElement>('.switch')) {
+      btn.addEventListener('click', () => {
+        const key = btn.dataset.key as keyof Settings;
+        const next = btn.getAttribute('aria-checked') !== 'true';
+        btn.setAttribute('aria-checked', String(next));
+        this.update({ [key]: next });
+      });
+    }
+    this.panel.querySelector<HTMLSelectElement>('#nm-voice')!.addEventListener('change', (e) => {
+      this.update({ voice: (e.target as HTMLSelectElement).value });
+    });
+    const speed = this.panel.querySelector<HTMLInputElement>('#nm-speed')!;
+    const speedValue = this.panel.querySelector<HTMLElement>('[data-for="speed"]')!;
+    speed.addEventListener('input', () => (speedValue.textContent = `${Number(speed.value).toFixed(2)}×`));
+    speed.addEventListener('change', () => this.update({ speed: Number(speed.value) }));
+    const volume = this.panel.querySelector<HTMLInputElement>('#nm-volume')!;
+    const volumeValue = this.panel.querySelector<HTMLElement>('[data-for="volume"]')!;
+    volume.addEventListener('input', () => {
+      volumeValue.textContent = `${Math.round(Number(volume.value) * 100)}%`;
+      this.update({ volume: Number(volume.value) });
+    });
+  }
+}

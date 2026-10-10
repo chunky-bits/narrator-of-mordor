@@ -1,0 +1,27 @@
+{
+  "name": "narrator-of-mordor",
+  "version": "0.1.0",
+  "description": "Narrator of Mordor — read web pages aloud with Kokoro TTS",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "assets": "node scripts/fetch-model.mjs",
+    "build": "vite build && vite build --mode content",
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "icons": "node scripts/make-icons.mjs",
+    "test:engine": "tsx scripts/test-engine.ts"
+  },
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "dependencies": {
+    "@huggingface/transformers": "^3.8.1",
+    "phonemizer": "^1.2.1"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.3.4",
+    "@types/node": "^26.6.4",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.3"
+  }
+}
