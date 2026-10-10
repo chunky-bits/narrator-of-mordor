@@ -43,6 +43,7 @@ export function init(send: EngineSend = chromeEngineSend): void {
     );
     bar.mount();
     narrator = { bar, player };
+    player.prepare(); // pre-generate the first sentence so play starts instantly
   };
 
   const hide = () => {

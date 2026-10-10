@@ -36,6 +36,9 @@ export class Player {
   private selection = new SelectionKeeper();
   /** True when the current reading was started from a user selection. */
   private fromSelection = false;
+  /** First sentence synthesised ahead of time, keyed by its text, voice and speed. */
+  private prepared: { key: string; session: string; synthesis: Promise<Synthesis> } | null = null;
+  private prepareTimer = 0;
 
   constructor(
     private engine: EngineClient,
@@ -70,7 +73,35 @@ export class Player {
     this.setState('idle');
   }
 
+  /**
+   * Synthesise the page's first sentence in the background so that pressing play
+   * starts immediately (this also loads the model). Called when the bar appears and
+   * whenever the player becomes idle again.
+   */
+  prepare(): void {
+    clearTimeout(this.prepareTimer);
+    // Let the page finish rendering first; segmentation reads computed styles.
+    this.prepareTimer = window.setTimeout(() => {
+      if (this.state !== 'idle') return;
+      const first = this.collectPage()[0];
+      if (!first) return;
+      const words = first.words.map((w) => w.text);
+      const key = this.textKey(words);
+      if (this.prepared?.key === key) return;
+      if (this.prepared) this.engine.cancel(this.prepared.session);
+      const session = `prepare-${Math.random().toString(36).slice(2)}`;
+      const synthesis = this.engine.synthesize(session, words, this.settings.voice, this.settings.speed);
+      synthesis.catch(() => {
+        if (this.prepared?.synthesis === synthesis) this.prepared = null;
+      });
+      this.prepared = { key, session, synthesis };
+    }, 300);
+  }
+
   dispose(): void {
+    clearTimeout(this.prepareTimer);
+    if (this.prepared) this.engine.cancel(this.prepared.session);
+    this.prepared = null;
     this.stop();
     this.highlighter.dispose();
     void this.ctx?.close();
@@ -85,6 +116,12 @@ export class Player {
       // Already-synthesised look-ahead uses the old voice/speed; drop it.
       for (const i of [...this.cache.keys()]) if (i > this.index) this.cache.delete(i);
       if (this.session) this.prefetch(this.index + 1);
+    }
+    if (
+      this.state === 'idle' &&
+      (next.voice !== prev.voice || next.speed !== prev.speed || next.articleMode !== prev.articleMode)
+    ) {
+      this.prepare(); // the prepared sentence no longer matches
     }
     if (!next.sentenceHighlight) this.highlighter.setSentence(null);
     else if (this.state !== 'idle') this.highlighter.setSentence(this.sentences[this.index]?.span ?? null);
@@ -115,8 +152,7 @@ export class Player {
     if (sel) {
       sentences = collectSentences([sel.commonAncestorContainer], { clamp: sel, articleMode: false, lang });
     } else {
-      const roots = (this.settings.articleMode && findArticleRoots()) || [document.body];
-      sentences = collectSentences(roots, { articleMode: this.settings.articleMode, lang });
+      sentences = this.collectPage();
     }
     if (!sentences.length) {
       this.selection.restore();
@@ -129,6 +165,16 @@ export class Player {
     this.session = Math.random().toString(36).slice(2);
     this.cache.clear();
     void this.playIndex(0);
+  }
+
+  private collectPage(): Sentence[] {
+    const lang = document.documentElement.lang || navigator.language || 'en';
+    const roots = (this.settings.articleMode && findArticleRoots()) || [document.body];
+    return collectSentences(roots, { articleMode: this.settings.articleMode, lang });
+  }
+
+  private textKey(words: string[]): string {
+    return `${this.settings.voice}|${this.settings.speed}|${words.join(' ')}`;
   }
 
   private pause(): void {
@@ -159,12 +205,14 @@ export class Player {
     }
     let p = this.cache.get(i);
     if (!p) {
-      p = this.engine.synthesize(
-        this.session,
-        this.sentences[i].words.map((w) => w.text),
-        this.settings.voice,
-        this.settings.speed,
-      );
+      const words = this.sentences[i].words.map((w) => w.text);
+      // Matched by text, so it is still used correctly if the page changed meanwhile.
+      if (this.prepared?.key === this.textKey(words)) {
+        p = this.prepared.synthesis;
+        this.prepared = null;
+      } else {
+        p = this.engine.synthesize(this.session, words, this.settings.voice, this.settings.speed);
+      }
       p.catch(() => {}); // handled where awaited
       this.cache.set(i, p);
     }
@@ -250,6 +298,7 @@ export class Player {
     this.selection.restore();
     this.fromSelection = false;
     this.setState('idle');
+    this.prepare(); // ready for the next play
   }
 
   private stopSource(): void {
