@@ -7,6 +7,8 @@ open-weight TTS model that runs entirely on your machine — no cloud, no API ke
   - Back: start of the paragraph, or the previous paragraph within its first 2 s
   - Rewind: start of the sentence, or the previous sentence within its first 2 s
   - Forward / Skip: next sentence / next paragraph
+- Smooth progress line with a hover-revealed thumb; drag it to jump to the sentence
+  under it (the thumb snaps to that sentence's start on release)
 - Paragraphs are detected automatically from the page structure; short lists and
   tables count as one paragraph, headings as their own
 - Reads the selected text, or the whole page / detected main article

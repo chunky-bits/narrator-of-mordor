@@ -28,6 +28,8 @@ export function init(send: EngineSend = chromeEngineSend): void {
       onRewind: () => player.rewind(),
       onForward: () => player.forward(),
       onSkip: () => player.skip(),
+      onScrub: (fraction) => player.seekToFraction(fraction, true),
+      onScrubEnd: (fraction) => player.seekToFraction(fraction),
       onSettingsChange: (next) => {
         settings = next;
         player.updateSettings(next);

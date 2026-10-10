@@ -12,6 +12,10 @@ export interface BarCallbacks {
   onRewind(): void;
   onForward(): void;
   onSkip(): void;
+  /** Thumb dragged (held still) at this fraction of the bar. */
+  onScrub(fraction: number): void;
+  /** Thumb released at this fraction of the bar. */
+  onScrubEnd(fraction: number): void;
   onSettingsChange(settings: Settings): void;
 }
 
@@ -60,14 +64,34 @@ button { font: inherit; color: inherit; }
   border-top: 1px solid var(--line);
   box-shadow: 0 -8px 24px rgba(0, 0, 0, .35);
 }
+.bar { --p: 0; }
 .progress {
   position: absolute; left: 0; top: -1px; height: 2px; width: 100%;
   background: linear-gradient(90deg, var(--ember-deep), var(--ember));
   box-shadow: 0 0 8px var(--ember-glow);
-  /* Driven every animation frame from the audio clock; no CSS transition. */
-  transform: scaleX(0);
+  /* --p is driven every animation frame from the audio clock; no CSS transition. */
+  transform: scaleX(var(--p));
   transform-origin: 0 50%;
 }
+/* Hover/drag strip along the progress line; the thumb fades in near its end. */
+.seek {
+  position: absolute; left: 0; right: 0; top: -7px; height: 14px; z-index: 1;
+  touch-action: none;
+}
+.seek.disabled { pointer-events: none; }
+.seek.near { cursor: grab; }
+.seek.dragging { cursor: grabbing; }
+.thumb {
+  position: absolute; top: 50%; left: calc(var(--p) * 100%);
+  width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ffd2a1, var(--ember) 55%, var(--ember-deep));
+  box-shadow: 0 0 10px var(--ember-glow);
+  opacity: 0; transform: scale(.5);
+  transition: opacity .18s ease, transform .18s ease;
+  pointer-events: none;
+}
+.seek.near .thumb, .seek.dragging .thumb { opacity: 1; transform: scale(1); }
+.seek.dragging .thumb { transform: scale(1.15); }
 
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .brand svg { width: 28px; height: 28px; flex: none; filter: drop-shadow(0 0 6px var(--ember-glow)); }
@@ -182,7 +206,11 @@ export class Bar {
   private panel: HTMLElement;
   private statusEl: HTMLElement;
   private countEl: HTMLElement;
-  private progressEl: HTMLElement;
+  private barEl: HTMLElement;
+  private seekEl: HTMLElement;
+  private position = 0;
+  private dragging = false;
+  private scrubTimer = 0;
   private settings: Settings;
   private errorTimer = 0;
   private stateText = 'Ready';
@@ -195,6 +223,7 @@ export class Bar {
       <style>${CSS}</style>
       <div class="bar" role="toolbar" aria-label="Narrator of Mordor">
         <div class="progress"></div>
+        <div class="seek disabled"><div class="thumb"></div></div>
         <div class="brand">
           ${ICONS.eye}
           <div class="titles">
@@ -225,7 +254,9 @@ export class Bar {
     this.panel = this.root.querySelector('.panel')!;
     this.statusEl = this.root.querySelector('.status')!;
     this.countEl = this.root.querySelector('.count')!;
-    this.progressEl = this.root.querySelector('.progress')!;
+    this.barEl = this.root.querySelector('.bar')!;
+    this.seekEl = this.root.querySelector('.seek')!;
+    this.initSeek();
 
     // Keep the page's text selection when pressing the bar buttons.
     for (const btn of [this.playBtn, this.gearBtn, ...this.skipBtns]) {
@@ -267,6 +298,8 @@ export class Bar {
     this.playBtn.setAttribute('aria-label', playing ? 'Pause' : 'Play');
     this.playBtn.classList.toggle('loading', state === 'loading');
     for (const btn of this.skipBtns) btn.disabled = state === 'idle';
+    this.seekEl.classList.toggle('disabled', state === 'idle');
+    if (state === 'idle') this.seekEl.classList.remove('near');
     this.stateText =
       detail ?? { idle: 'Ready', loading: 'Preparing speech…', playing: 'Reading', paused: 'Paused' }[state];
     if (state === 'idle') {
@@ -277,8 +310,61 @@ export class Bar {
   }
 
   setPosition(fraction: number): void {
-    const value = `scaleX(${Math.min(1, Math.max(0, fraction)).toFixed(5)})`;
-    if (this.progressEl.style.transform !== value) this.progressEl.style.transform = value;
+    if (this.dragging) return; // the thumb follows the pointer until release
+    this.renderPosition(fraction);
+  }
+
+  private renderPosition(fraction: number): void {
+    const f = Math.round(Math.min(1, Math.max(0, fraction)) * 1e5) / 1e5;
+    if (f === this.position) return;
+    this.position = f;
+    this.barEl.style.setProperty('--p', String(f));
+  }
+
+  /** Hover-to-reveal thumb at the end of the progress line, draggable to seek. */
+  private initSeek(): void {
+    const NEAR_PX = 18;
+    const fractionAt = (e: PointerEvent) => {
+      const r = this.seekEl.getBoundingClientRect();
+      return Math.min(1, Math.max(0, (e.clientX - r.left) / Math.max(r.width, 1)));
+    };
+    const isNear = (e: PointerEvent) => {
+      const r = this.seekEl.getBoundingClientRect();
+      return Math.abs(e.clientX - (r.left + this.position * r.width)) <= NEAR_PX;
+    };
+
+    this.seekEl.addEventListener('pointermove', (e) => {
+      if (this.dragging) {
+        const f = fractionAt(e);
+        this.renderPosition(f);
+        // Seek once the pointer rests, rather than for every sentence passed over.
+        clearTimeout(this.scrubTimer);
+        this.scrubTimer = window.setTimeout(() => this.cb.onScrub(f), 200);
+        return;
+      }
+      this.seekEl.classList.toggle('near', isNear(e));
+    });
+    this.seekEl.addEventListener('pointerleave', () => {
+      if (!this.dragging) this.seekEl.classList.remove('near');
+    });
+    this.seekEl.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || !isNear(e)) return;
+      e.preventDefault(); // keep the page's text selection
+      this.dragging = true;
+      this.seekEl.setPointerCapture(e.pointerId);
+      this.seekEl.classList.add('dragging', 'near');
+    });
+    const end = (e: PointerEvent) => {
+      if (!this.dragging) return;
+      clearTimeout(this.scrubTimer);
+      this.dragging = false;
+      this.seekEl.classList.remove('dragging');
+      this.seekEl.classList.toggle('near', isNear(e));
+      // The player seeks to the sentence start and reports it, snapping the thumb.
+      this.cb.onScrubEnd(fractionAt(e));
+    };
+    this.seekEl.addEventListener('pointerup', end);
+    this.seekEl.addEventListener('pointercancel', end);
   }
 
   setProgress(index: number, total: number): void {

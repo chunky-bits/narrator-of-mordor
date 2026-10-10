@@ -109,6 +109,19 @@ export class Player {
     this.seek(position > REWIND_THRESHOLD || start === 0 ? start : this.paragraphStart(start - 1));
   }
 
+  /**
+   * Seek to the start of the sentence at this fraction of the progress bar.
+   * With `onlyIfChanged`, staying within the current sentence does nothing (live scrubbing).
+   */
+  seekToFraction(fraction: number, onlyIfChanged = false): void {
+    if (!this.active) return;
+    const target = fraction * this.totalChars;
+    let i = 0;
+    while (i + 1 < this.charOffsets.length && this.charOffsets[i + 1] <= target) i++;
+    if (onlyIfChanged && i === this.index) return;
+    this.seek(i);
+  }
+
   /** Skip: jump to the start of the next paragraph (finishing after the last one). */
   skip(): void {
     if (!this.active) return;
