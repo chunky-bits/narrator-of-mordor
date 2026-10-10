@@ -22,6 +22,8 @@ export interface Word {
 export interface Sentence {
   span: Span;
   words: Word[];
+  /** Paragraph number (0-based, ascending). Lists and tables count as one paragraph. */
+  paragraph: number;
 }
 
 export function toRange(span: Span): Range {
@@ -53,6 +55,8 @@ const ARTICLE_SKIP = [
 const INLINE_DISPLAYS = new Set(['inline', 'inline-block', 'inline-flex', 'inline-grid', 'contents', 'ruby', 'ruby-text']);
 
 interface Run {
+  /** Paragraph grouping key: the block, or the enclosing list / table. */
+  group: Element;
   text: string;
   /** String offset → DOM position mapping, one entry per contributing text node. */
   parts: { start: number; node: Text; nodeOffset: number; length: number }[];
@@ -69,10 +73,17 @@ export function collectSentences(roots: Node[], opts: CollectOptions): Sentence[
   const runs = collectRuns(roots, opts);
   const sentences: Sentence[] = [];
   const segmenter = new Intl.Segmenter(opts.lang, { granularity: 'sentence' });
+  let paragraph = -1;
+  let lastGroup: Element | null = null;
   for (const run of runs) {
+    // Consecutive runs in the same list or table stay in one paragraph.
+    if (run.group !== lastGroup) {
+      lastGroup = run.group;
+      paragraph++;
+    }
     let pending: { start: number; end: number } | null = null;
     const flush = (seg: { start: number; end: number }) => {
-      const s = buildSentence(run, seg.start, seg.end);
+      const s = buildSentence(run, seg.start, seg.end, paragraph);
       if (s) sentences.push(s);
     };
     for (const seg of segmenter.segment(run.text)) {
@@ -104,7 +115,10 @@ function endsWithAbbreviation(text: string): boolean {
   return ABBREVIATIONS.has(word) || /^[a-z]$/.test(word); // single initials: "J. R. R. Tolkien"
 }
 
-function buildSentence(run: Run, start: number, end: number): Sentence | null {
+/** Lists/tables up to this many characters are one paragraph; longer ones split per item. */
+const GROUP_MAX_CHARS = 1500;
+
+function buildSentence(run: Run, start: number, end: number, paragraph: number): Sentence | null {
   const text = run.text.slice(start, end);
   if (!/[\p{L}\p{N}]/u.test(text)) return null;
 
@@ -124,7 +138,7 @@ function buildSentence(run: Run, start: number, end: number): Sentence | null {
     words.push({ text: m[0], highlight });
   }
   if (first < 0) return null;
-  return { span: span(run, first, last), words };
+  return { span: span(run, first, last), words, paragraph };
 }
 
 function span(run: Run, start: number, end: number): Span {
@@ -183,6 +197,23 @@ function collectRuns(roots: Node[], opts: CollectOptions): Run[] {
     return block;
   };
 
+  // Short lists and tables are one paragraph, so skipping doesn't stop at every item.
+  // Only containers inside the reading root count: on table-layout sites the whole
+  // article lives in a <table>, and long lists of paragraph-sized items read better
+  // item by item.
+  const groupable = new Map<Element, boolean>();
+  const paragraphGroup = (block: Element): Element => {
+    const container = block.closest('ul, ol, dl, table');
+    if (!container) return block;
+    let ok = groupable.get(container);
+    if (ok === undefined) {
+      const inside = roots.some((r) => r !== container && r.contains(container));
+      ok = inside && (container.textContent?.length ?? 0) <= GROUP_MAX_CHARS;
+      groupable.set(container, ok);
+    }
+    return ok ? container : block;
+  };
+
   const endRun = () => {
     if (current && /\S/.test(current.text)) runs.push(current);
     current = null;
@@ -205,7 +236,7 @@ function collectRuns(roots: Node[], opts: CollectOptions): Run[] {
     const block = findBlock(parent);
     if (block !== currentBlock) {
       endRun();
-      current = { text: '', parts: [] };
+      current = { group: paragraphGroup(block), text: '', parts: [] };
       currentBlock = block;
     }
     const run = current!;

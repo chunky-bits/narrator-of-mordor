@@ -11,12 +11,14 @@ export interface BarCallbacks {
   onBack(): void;
   onRewind(): void;
   onForward(): void;
+  onSkip(): void;
   onSettingsChange(settings: Settings): void;
 }
 
 const ICONS = {
   back: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5.5" width="2.4" height="13" rx="1"/><path d="M19 6.6v10.8a1 1 0 0 1-1.55.83L9.6 12.83a1 1 0 0 1 0-1.66l7.85-5.4A1 1 0 0 1 19 6.6z"/></svg>',
   rewind: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.5 7.1v9.8a.9.9 0 0 1-1.42.74L3.7 12.74a.9.9 0 0 1 0-1.48l6.38-4.9a.9.9 0 0 1 1.42.74z"/><path d="M20.5 7.1v9.8a.9.9 0 0 1-1.42.74l-6.38-4.9a.9.9 0 0 1 0-1.48l6.38-4.9a.9.9 0 0 1 1.42.74z"/></svg>',
+  skip: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="16.6" y="5.5" width="2.4" height="13" rx="1"/><path d="M5 6.6v10.8a1 1 0 0 0 1.55.83l7.85-5.4a1 1 0 0 0 0-1.66l-7.85-5.4A1 1 0 0 0 5 6.6z"/></svg>',
   forward: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.1v9.8a.9.9 0 0 0 1.42.74l6.38-4.9a.9.9 0 0 0 0-1.48l-6.38-4.9a.9.9 0 0 0-1.42.74z"/><path d="M12.5 7.1v9.8a.9.9 0 0 0 1.42.74l6.38-4.9a.9.9 0 0 0 0-1.48l-6.38-4.9a.9.9 0 0 0-1.42.74z"/></svg>',
   play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>',
   pause: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="5" width="4" height="14" rx="1.2"/><rect x="13.5" y="5" width="4" height="14" rx="1.2"/></svg>',
@@ -199,10 +201,11 @@ export class Bar {
           </div>
         </div>
         <div class="transport">
-          <button class="skip back" type="button" aria-label="Back to start" title="Back to start" disabled>${ICONS.back}</button>
+          <button class="skip back" type="button" aria-label="Paragraph start" title="Start of paragraph, or previous paragraph" disabled>${ICONS.back}</button>
           <button class="skip rewind" type="button" aria-label="Rewind" title="Rewind: restart sentence, or previous sentence" disabled>${ICONS.rewind}</button>
           <button class="play" type="button" aria-label="Play">${ICONS.play}</button>
           <button class="skip forward" type="button" aria-label="Next sentence" title="Next sentence" disabled>${ICONS.forward}</button>
+          <button class="skip next" type="button" aria-label="Next paragraph" title="Next paragraph" disabled>${ICONS.skip}</button>
         </div>
         <div class="right">
           <span class="count"></span>
@@ -214,7 +217,8 @@ export class Bar {
     const backBtn = this.root.querySelector<HTMLButtonElement>('.back')!;
     const rewindBtn = this.root.querySelector<HTMLButtonElement>('.rewind')!;
     const forwardBtn = this.root.querySelector<HTMLButtonElement>('.forward')!;
-    this.skipBtns = [backBtn, rewindBtn, forwardBtn];
+    const nextBtn = this.root.querySelector<HTMLButtonElement>('.next')!;
+    this.skipBtns = [backBtn, rewindBtn, forwardBtn, nextBtn];
     this.gearBtn = this.root.querySelector('.gear')!;
     this.panel = this.root.querySelector('.panel')!;
     this.statusEl = this.root.querySelector('.status')!;
@@ -229,6 +233,7 @@ export class Bar {
     backBtn.addEventListener('click', () => this.cb.onBack());
     rewindBtn.addEventListener('click', () => this.cb.onRewind());
     forwardBtn.addEventListener('click', () => this.cb.onForward());
+    nextBtn.addEventListener('click', () => this.cb.onSkip());
     this.gearBtn.addEventListener('click', () => this.togglePanel());
 
     // Keys typed in the bar should not trigger the page's own shortcuts.

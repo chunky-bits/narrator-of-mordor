@@ -4,6 +4,8 @@ export interface Synthesis {
   buffer: (ctx: BaseAudioContext) => AudioBuffer;
   /** [start, end] seconds per word. */
   words: [number, number][];
+  /** Length of the audio in seconds. */
+  duration: number;
 }
 
 export type EngineSend = (req: EngineRequest) => Promise<SynthesizeResponse | ErrorResponse>;
@@ -31,6 +33,7 @@ export class EngineClient {
     const pcm = decodePcm(res.pcm);
     return {
       words: res.words,
+      duration: pcm.length / res.sampleRate,
       buffer: (ctx) => {
         const buf = ctx.createBuffer(1, pcm.length, res.sampleRate);
         buf.copyToChannel(pcm, 0);

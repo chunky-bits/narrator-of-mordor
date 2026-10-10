@@ -3,8 +3,12 @@
 A Chrome extension that reads web pages aloud with **Kokoro**, a high-quality
 open-weight TTS model that runs entirely on your machine — no cloud, no API keys.
 
-- Bottom bar with play/pause, back-to-start, rewind (restart sentence, or previous
-  sentence within its first 2 s), next-sentence and a settings menu (gear)
+- Bottom bar with play/pause, a settings menu (gear) and transport controls:
+  - Back: start of the paragraph, or the previous paragraph within its first 2 s
+  - Rewind: start of the sentence, or the previous sentence within its first 2 s
+  - Forward / Skip: next sentence / next paragraph
+- Paragraphs are detected automatically from the page structure; short lists and
+  tables count as one paragraph, headings as their own
 - Reads the selected text, or the whole page / detected main article
 - Exact sentence and word highlighting, coloured as variations of the site's own background
 - Selection is hidden while reading and restored on pause or when finished

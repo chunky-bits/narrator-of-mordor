@@ -17,7 +17,10 @@ export interface PlayerEvents {
 }
 
 const LOOKAHEAD = 2;
-/** Rewind restarts the current sentence unless it started less than this long ago. */
+/**
+ * Rewind restarts the current sentence (Back: the current paragraph) unless it started
+ * less than this long ago, in which case it goes to the previous one.
+ */
 const REWIND_THRESHOLD = 2;
 /** Pre-generated first sentences kept around (page + recent selections). */
 const MAX_PREPARED = 3;
@@ -45,6 +48,8 @@ export class Player {
   private prepareTimer = 0;
   /** Incremented on every playIndex call so superseded (awaiting) calls can bail out. */
   private playSeq = 0;
+  /** Audio length of each sentence synthesised in this reading (for Back's 2 s rule). */
+  private durations = new Map<number, number>();
 
   constructor(
     private engine: EngineClient,
@@ -75,9 +80,31 @@ export class Player {
     return Boolean(this.session) && this.state !== 'idle';
   }
 
-  /** Back: jump to the start of the selection / page. */
+  /**
+   * Back: go to the start of the current paragraph, or to the start of the previous
+   * paragraph when less than REWIND_THRESHOLD seconds of this one have been played.
+   */
   back(): void {
-    this.seek(0);
+    if (!this.active) return;
+    const start = this.paragraphStart(this.index);
+    // Audio position within the paragraph: earlier sentences + time into this one.
+    // Unknown lengths (sentences jumped over) count as past the threshold.
+    let position = this.elapsed();
+    for (let k = start; k < this.index; k++) position += this.durations.get(k) ?? REWIND_THRESHOLD;
+    this.seek(position > REWIND_THRESHOLD || start === 0 ? start : this.paragraphStart(start - 1));
+  }
+
+  /** Skip: jump to the start of the next paragraph (finishing after the last one). */
+  skip(): void {
+    if (!this.active) return;
+    const current = this.sentences[this.index].paragraph;
+    const next = this.sentences.findIndex((s, k) => k > this.index && s.paragraph !== current);
+    if (next < 0) {
+      this.stop();
+      this.prepare();
+      return;
+    }
+    this.seek(next);
   }
 
   /**
@@ -86,8 +113,7 @@ export class Player {
    */
   rewind(): void {
     if (!this.active) return;
-    const elapsed = this.source && this.ctx ? this.ctx.currentTime - this.startedAt : 0;
-    this.seek(elapsed > REWIND_THRESHOLD ? this.index : this.index - 1);
+    this.seek(this.elapsed() > REWIND_THRESHOLD ? this.index : this.index - 1);
   }
 
   /** Forward: jump to the start of the next sentence (finishing after the last one). */
@@ -180,6 +206,7 @@ export class Player {
     // Hide the selection while reading; it is restored on pause / stop / finish.
     this.selection.hide();
     this.sentences = sentences;
+    this.durations.clear();
     this.session = Math.random().toString(36).slice(2);
     this.cache.clear();
     void this.playIndex(0);
@@ -244,6 +271,17 @@ export class Player {
 
   private textKey(words: string[]): string {
     return `${this.settings.voice}|${this.settings.speed}|${words.join(' ')}`;
+  }
+
+  /** Seconds played of the current sentence (0 if it hasn't started). */
+  private elapsed(): number {
+    return this.source && this.ctx ? Math.max(0, this.ctx.currentTime - this.startedAt) : 0;
+  }
+
+  private paragraphStart(i: number): number {
+    const p = this.sentences[i].paragraph;
+    while (i > 0 && this.sentences[i - 1].paragraph === p) i--;
+    return i;
   }
 
   private seek(i: number): void {
@@ -349,6 +387,7 @@ export class Player {
     if (session !== this.session || seq !== this.playSeq) return; // superseded by a seek
     if (this.state === 'paused') return; // resume() will call playIndex again
 
+    this.durations.set(i, synthesis.duration);
     const ctx = this.ctx!;
     const source = ctx.createBufferSource();
     source.buffer = synthesis.buffer(ctx);

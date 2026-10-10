@@ -27,6 +27,7 @@ export function init(send: EngineSend = chromeEngineSend): void {
       onBack: () => player.back(),
       onRewind: () => player.rewind(),
       onForward: () => player.forward(),
+      onSkip: () => player.skip(),
       onSettingsChange: (next) => {
         settings = next;
         player.updateSettings(next);
