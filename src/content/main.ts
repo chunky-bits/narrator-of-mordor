@@ -24,6 +24,9 @@ export function init(send: EngineSend = chromeEngineSend): void {
     settings = await loadSettings();
     const bar: Bar = new Bar(settings, {
       onPlayPause: () => player.toggle(),
+      onBack: () => player.back(),
+      onRewind: () => player.rewind(),
+      onForward: () => player.forward(),
       onSettingsChange: (next) => {
         settings = next;
         player.updateSettings(next);

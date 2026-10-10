@@ -17,6 +17,8 @@ export interface PlayerEvents {
 }
 
 const LOOKAHEAD = 2;
+/** Rewind restarts the current sentence unless it started less than this long ago. */
+const REWIND_THRESHOLD = 2;
 /** Pre-generated first sentences kept around (page + recent selections). */
 const MAX_PREPARED = 3;
 
@@ -41,6 +43,8 @@ export class Player {
   /** First sentences synthesised ahead of time, keyed by text, voice and speed (oldest first). */
   private prepared = new Map<string, { session: string; synthesis: Promise<Synthesis> }>();
   private prepareTimer = 0;
+  /** Incremented on every playIndex call so superseded (awaiting) calls can bail out. */
+  private playSeq = 0;
 
   constructor(
     private engine: EngineClient,
@@ -64,6 +68,37 @@ export class Player {
       return;
     }
     this.start();
+  }
+
+  /** True while there is a reading to move within (playing, loading or paused). */
+  get active(): boolean {
+    return Boolean(this.session) && this.state !== 'idle';
+  }
+
+  /** Back: jump to the start of the selection / page. */
+  back(): void {
+    this.seek(0);
+  }
+
+  /**
+   * Rewind: restart the current sentence, or go to the previous one when the current
+   * sentence started less than REWIND_THRESHOLD seconds ago.
+   */
+  rewind(): void {
+    if (!this.active) return;
+    const elapsed = this.source && this.ctx ? this.ctx.currentTime - this.startedAt : 0;
+    this.seek(elapsed > REWIND_THRESHOLD ? this.index : this.index - 1);
+  }
+
+  /** Forward: jump to the start of the next sentence (finishing after the last one). */
+  forward(): void {
+    if (!this.active) return;
+    if (this.index + 1 >= this.sentences.length) {
+      this.stop();
+      this.prepare();
+      return;
+    }
+    this.seek(this.index + 1);
   }
 
   stop(): void {
@@ -211,6 +246,33 @@ export class Player {
     return `${this.settings.voice}|${this.settings.speed}|${words.join(' ')}`;
   }
 
+  private seek(i: number): void {
+    if (!this.active) return;
+    i = Math.max(0, Math.min(i, this.sentences.length - 1));
+    this.stopSource();
+    cancelAnimationFrame(this.raf);
+    if (this.state === 'paused') {
+      // Stay paused at the new position; resume() starts it (no source → playIndex).
+      this.playSeq++;
+      this.showSentence(i);
+      void this.synth(i);
+      this.prefetch(i + 1);
+      return;
+    }
+    void this.playIndex(i);
+  }
+
+  /** Move the position marker (progress, highlight, scroll) to sentence i. */
+  private showSentence(i: number): void {
+    this.index = i;
+    this.events.onProgress(i, this.sentences.length);
+    const sentence = this.sentences[i];
+    this.currentWord = -1;
+    this.highlighter.setWord(null);
+    this.highlighter.setSentence(this.settings.sentenceHighlight ? sentence.span : null);
+    if (this.settings.autoScroll) this.scrollTo(sentence.span);
+  }
+
   private pause(): void {
     if (!this.ctx) return;
     void this.ctx.suspend();
@@ -226,7 +288,9 @@ export class Player {
       this.setState('playing');
       this.tick();
     } else {
-      // Paused while the sentence was still being synthesised.
+      // Paused before the sentence started (still synthesising, or moved while paused).
+      // Leave the paused state first, or playIndex would treat us as still paused.
+      this.setState('loading');
       void this.playIndex(this.index);
     }
   }
@@ -261,17 +325,12 @@ export class Player {
 
   private async playIndex(i: number): Promise<void> {
     const session = this.session;
+    const seq = ++this.playSeq;
     if (i >= this.sentences.length) {
       this.finish();
       return;
     }
-    this.index = i;
-    this.events.onProgress(i, this.sentences.length);
-    const sentence = this.sentences[i];
-    this.currentWord = -1;
-    this.highlighter.setWord(null);
-    this.highlighter.setSentence(this.settings.sentenceHighlight ? sentence.span : null);
-    if (this.settings.autoScroll) this.scrollTo(sentence.span);
+    this.showSentence(i);
 
     let synthesis: Synthesis;
     const pending = this.synth(i);
@@ -285,8 +344,9 @@ export class Player {
       this.stop();
       return;
     }
-    this.cache.delete(i - 1);
-    if (session !== this.session) return;
+    // Keep the previous sentence cached so rewinding to it is instant.
+    for (const k of [...this.cache.keys()]) if (k < i - 1) this.cache.delete(k);
+    if (session !== this.session || seq !== this.playSeq) return; // superseded by a seek
     if (this.state === 'paused') return; // resume() will call playIndex again
 
     const ctx = this.ctx!;

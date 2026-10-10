@@ -8,10 +8,16 @@ export const BAR_HEIGHT = 56;
 
 export interface BarCallbacks {
   onPlayPause(): void;
+  onBack(): void;
+  onRewind(): void;
+  onForward(): void;
   onSettingsChange(settings: Settings): void;
 }
 
 const ICONS = {
+  back: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5.5" width="2.4" height="13" rx="1"/><path d="M19 6.6v10.8a1 1 0 0 1-1.55.83L9.6 12.83a1 1 0 0 1 0-1.66l7.85-5.4A1 1 0 0 1 19 6.6z"/></svg>',
+  rewind: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.5 7.1v9.8a.9.9 0 0 1-1.42.74L3.7 12.74a.9.9 0 0 1 0-1.48l6.38-4.9a.9.9 0 0 1 1.42.74z"/><path d="M20.5 7.1v9.8a.9.9 0 0 1-1.42.74l-6.38-4.9a.9.9 0 0 1 0-1.48l6.38-4.9a.9.9 0 0 1 1.42.74z"/></svg>',
+  forward: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.1v9.8a.9.9 0 0 0 1.42.74l6.38-4.9a.9.9 0 0 0 0-1.48l-6.38-4.9a.9.9 0 0 0-1.42.74z"/><path d="M12.5 7.1v9.8a.9.9 0 0 0 1.42.74l6.38-4.9a.9.9 0 0 0 0-1.48l-6.38-4.9a.9.9 0 0 0-1.42.74z"/></svg>',
   play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>',
   pause: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="5" width="4" height="14" rx="1.2"/><rect x="13.5" y="5" width="4" height="14" rx="1.2"/></svg>',
   gear: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
@@ -85,6 +91,19 @@ button { font: inherit; color: inherit; }
   outline: 2px solid var(--ember); outline-offset: 2px;
 }
 .play svg { width: 20px; height: 20px; fill: currentColor; }
+
+.transport { display: flex; align-items: center; gap: 6px; }
+.skip {
+  width: 34px; height: 34px; border-radius: 50%; border: none; padding: 0;
+  display: grid; place-items: center; cursor: pointer;
+  background: transparent; color: var(--text);
+  transition: background .15s, color .15s, opacity .15s;
+}
+.skip svg { width: 17px; height: 17px; fill: currentColor; }
+.skip:hover:not(:disabled) { background: var(--bg-raised); color: var(--ember); }
+.skip:active:not(:disabled) { transform: scale(.94); }
+.skip:disabled { opacity: .3; cursor: default; }
+.skip:focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; }
 .play.loading::after {
   content: ""; position: absolute; inset: -5px; border-radius: 50%;
   border: 2px solid transparent; border-top-color: var(--ember); border-right-color: var(--ember);
@@ -154,6 +173,7 @@ export class Bar {
   readonly host: HTMLElement;
   private root: ShadowRoot;
   private playBtn: HTMLButtonElement;
+  private skipBtns: HTMLButtonElement[];
   private gearBtn: HTMLButtonElement;
   private panel: HTMLElement;
   private statusEl: HTMLElement;
@@ -178,7 +198,12 @@ export class Bar {
             <span class="status" role="status" aria-live="polite">Ready</span>
           </div>
         </div>
-        <button class="play" type="button" aria-label="Play">${ICONS.play}</button>
+        <div class="transport">
+          <button class="skip back" type="button" aria-label="Back to start" title="Back to start" disabled>${ICONS.back}</button>
+          <button class="skip rewind" type="button" aria-label="Rewind" title="Rewind: restart sentence, or previous sentence" disabled>${ICONS.rewind}</button>
+          <button class="play" type="button" aria-label="Play">${ICONS.play}</button>
+          <button class="skip forward" type="button" aria-label="Next sentence" title="Next sentence" disabled>${ICONS.forward}</button>
+        </div>
         <div class="right">
           <span class="count"></span>
           <button class="icon-btn gear" type="button" aria-label="Settings" aria-expanded="false" aria-controls="nm-panel">${ICONS.gear}</button>
@@ -186,6 +211,10 @@ export class Bar {
         <div class="panel" id="nm-panel" role="dialog" aria-label="Narrator settings" hidden></div>
       </div>`;
     this.playBtn = this.root.querySelector('.play')!;
+    const backBtn = this.root.querySelector<HTMLButtonElement>('.back')!;
+    const rewindBtn = this.root.querySelector<HTMLButtonElement>('.rewind')!;
+    const forwardBtn = this.root.querySelector<HTMLButtonElement>('.forward')!;
+    this.skipBtns = [backBtn, rewindBtn, forwardBtn];
     this.gearBtn = this.root.querySelector('.gear')!;
     this.panel = this.root.querySelector('.panel')!;
     this.statusEl = this.root.querySelector('.status')!;
@@ -193,8 +222,13 @@ export class Bar {
     this.progressEl = this.root.querySelector('.progress')!;
 
     // Keep the page's text selection when pressing the bar buttons.
-    for (const btn of [this.playBtn, this.gearBtn]) btn.addEventListener('mousedown', (e) => e.preventDefault());
+    for (const btn of [this.playBtn, this.gearBtn, ...this.skipBtns]) {
+      btn.addEventListener('mousedown', (e) => e.preventDefault());
+    }
     this.playBtn.addEventListener('click', () => this.cb.onPlayPause());
+    backBtn.addEventListener('click', () => this.cb.onBack());
+    rewindBtn.addEventListener('click', () => this.cb.onRewind());
+    forwardBtn.addEventListener('click', () => this.cb.onForward());
     this.gearBtn.addEventListener('click', () => this.togglePanel());
 
     // Keys typed in the bar should not trigger the page's own shortcuts.
@@ -225,6 +259,7 @@ export class Bar {
     this.playBtn.innerHTML = playing ? ICONS.pause : ICONS.play;
     this.playBtn.setAttribute('aria-label', playing ? 'Pause' : 'Play');
     this.playBtn.classList.toggle('loading', state === 'loading');
+    for (const btn of this.skipBtns) btn.disabled = state === 'idle';
     this.stateText =
       detail ?? { idle: 'Ready', loading: 'Preparing speech…', playing: 'Reading', paused: 'Paused' }[state];
     if (state === 'idle') this.setProgress(-1, 0);
