@@ -9,12 +9,7 @@ export class SelectionKeeper {
   capture(): Range | null {
     this.saved = currentRanges();
     this.hidden = false;
-    if (!this.saved.length) return null;
-    const r = document.createRange();
-    r.setStart(this.saved[0].startContainer, this.saved[0].startOffset);
-    const last = this.saved[this.saved.length - 1];
-    r.setEnd(last.endContainer, last.endOffset);
-    return r;
+    return merge(this.saved);
   }
 
   hide(): void {
@@ -44,6 +39,20 @@ export class SelectionKeeper {
         r.compareBoundaryPoints(Range.END_TO_END, this.saved[i]) !== 0,
     );
   }
+}
+
+/** The current non-empty selection as one range, without remembering it. */
+export function selectionRange(): Range | null {
+  return merge(currentRanges());
+}
+
+function merge(ranges: Range[]): Range | null {
+  if (!ranges.length) return null;
+  const r = document.createRange();
+  r.setStart(ranges[0].startContainer, ranges[0].startOffset);
+  const last = ranges[ranges.length - 1];
+  r.setEnd(last.endContainer, last.endOffset);
+  return r;
 }
 
 function currentRanges(): Range[] {

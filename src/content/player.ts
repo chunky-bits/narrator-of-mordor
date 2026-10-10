@@ -6,7 +6,7 @@ import { findArticleRoots } from './article';
 import type { EngineClient, Synthesis } from './engine-client';
 import { Highlighter } from './highlight';
 import { collectSentences, toRange, type Sentence, type Span } from './segment';
-import { SelectionKeeper } from './selection';
+import { SelectionKeeper, selectionRange } from './selection';
 
 export type PlayerState = 'idle' | 'loading' | 'playing' | 'paused';
 
@@ -17,6 +17,8 @@ export interface PlayerEvents {
 }
 
 const LOOKAHEAD = 2;
+/** Pre-generated first sentences kept around (page + recent selections). */
+const MAX_PREPARED = 3;
 
 export class Player {
   state: PlayerState = 'idle';
@@ -36,8 +38,8 @@ export class Player {
   private selection = new SelectionKeeper();
   /** True when the current reading was started from a user selection. */
   private fromSelection = false;
-  /** First sentence synthesised ahead of time, keyed by its text, voice and speed. */
-  private prepared: { key: string; session: string; synthesis: Promise<Synthesis> } | null = null;
+  /** First sentences synthesised ahead of time, keyed by text, voice and speed (oldest first). */
+  private prepared = new Map<string, { session: string; synthesis: Promise<Synthesis> }>();
   private prepareTimer = 0;
 
   constructor(
@@ -45,7 +47,9 @@ export class Player {
     private settings: Settings,
     private events: PlayerEvents,
     private bottomInset: () => number,
-  ) {}
+  ) {
+    document.addEventListener('selectionchange', this.onSelectionChange);
+  }
 
   /** Play/pause button. Must be called from a user gesture (creates the AudioContext). */
   toggle(): void {
@@ -74,34 +78,21 @@ export class Player {
   }
 
   /**
-   * Synthesise the page's first sentence in the background so that pressing play
-   * starts immediately (this also loads the model). Called when the bar appears and
-   * whenever the player becomes idle again.
+   * Synthesise the first sentence of what play would read next — the current
+   * selection, or else the page — so that pressing play starts immediately (this
+   * also loads the model). Called when the bar appears, when the selection changes,
+   * and whenever the player becomes idle again.
    */
-  prepare(): void {
+  prepare(delay = 300): void {
     clearTimeout(this.prepareTimer);
-    // Let the page finish rendering first; segmentation reads computed styles.
-    this.prepareTimer = window.setTimeout(() => {
-      if (this.state !== 'idle') return;
-      const first = this.collectPage()[0];
-      if (!first) return;
-      const words = first.words.map((w) => w.text);
-      const key = this.textKey(words);
-      if (this.prepared?.key === key) return;
-      if (this.prepared) this.engine.cancel(this.prepared.session);
-      const session = `prepare-${Math.random().toString(36).slice(2)}`;
-      const synthesis = this.engine.synthesize(session, words, this.settings.voice, this.settings.speed);
-      synthesis.catch(() => {
-        if (this.prepared?.synthesis === synthesis) this.prepared = null;
-      });
-      this.prepared = { key, session, synthesis };
-    }, 300);
+    // Debounced: lets the page finish rendering and selections settle while dragging.
+    this.prepareTimer = window.setTimeout(() => this.prepareNow(), delay);
   }
 
   dispose(): void {
+    document.removeEventListener('selectionchange', this.onSelectionChange);
     clearTimeout(this.prepareTimer);
-    if (this.prepared) this.engine.cancel(this.prepared.session);
-    this.prepared = null;
+    this.clearPrepared();
     this.stop();
     this.highlighter.dispose();
     void this.ctx?.close();
@@ -117,11 +108,9 @@ export class Player {
       for (const i of [...this.cache.keys()]) if (i > this.index) this.cache.delete(i);
       if (this.session) this.prefetch(this.index + 1);
     }
-    if (
-      this.state === 'idle' &&
-      (next.voice !== prev.voice || next.speed !== prev.speed || next.articleMode !== prev.articleMode)
-    ) {
-      this.prepare(); // the prepared sentence no longer matches
+    if (next.voice !== prev.voice || next.speed !== prev.speed) this.clearPrepared();
+    if (next.voice !== prev.voice || next.speed !== prev.speed || next.articleMode !== prev.articleMode) {
+      this.prepare(); // what was prepared no longer matches
     }
     if (!next.sentenceHighlight) this.highlighter.setSentence(null);
     else if (this.state !== 'idle') this.highlighter.setSentence(this.sentences[this.index]?.span ?? null);
@@ -147,13 +136,7 @@ export class Player {
     this.stop();
     const sel = this.selection.capture();
     this.fromSelection = Boolean(sel);
-    const lang = document.documentElement.lang || navigator.language || 'en';
-    let sentences: Sentence[];
-    if (sel) {
-      sentences = collectSentences([sel.commonAncestorContainer], { clamp: sel, articleMode: false, lang });
-    } else {
-      sentences = this.collectPage();
-    }
+    const sentences = sel ? this.collectSelection(sel) : this.collectPage();
     if (!sentences.length) {
       this.selection.restore();
       this.events.onError(sel ? 'No readable text in the selection.' : 'No readable text found on this page.');
@@ -167,10 +150,61 @@ export class Player {
     void this.playIndex(0);
   }
 
+  private lang(): string {
+    return document.documentElement.lang || navigator.language || 'en';
+  }
+
   private collectPage(): Sentence[] {
-    const lang = document.documentElement.lang || navigator.language || 'en';
     const roots = (this.settings.articleMode && findArticleRoots()) || [document.body];
-    return collectSentences(roots, { articleMode: this.settings.articleMode, lang });
+    return collectSentences(roots, { articleMode: this.settings.articleMode, lang: this.lang() });
+  }
+
+  private collectSelection(sel: Range): Sentence[] {
+    return collectSentences([sel.commonAncestorContainer], { clamp: sel, articleMode: false, lang: this.lang() });
+  }
+
+  private onSelectionChange = (): void => {
+    // Only for real selections (not caret moves while typing), and only when play
+    // would start a new reading (idle, or paused with a new selection).
+    if ((this.state === 'idle' || this.state === 'paused') && selectionRange()) this.prepare(400);
+  };
+
+  private prepareNow(): void {
+    if (this.state === 'playing' || this.state === 'loading') return;
+    const sel = selectionRange();
+    let first: Sentence | undefined;
+    if (sel && (this.state === 'idle' || this.selection.hasNewSelection())) {
+      first = this.collectSelection(sel)[0];
+    } else if (this.state === 'idle') {
+      first = this.collectPage()[0];
+    }
+    if (!first) return; // paused without a new selection: play resumes instead
+
+    const words = first.words.map((w) => w.text);
+    const key = this.textKey(words);
+    const existing = this.prepared.get(key);
+    if (existing) {
+      // Mark as most recently used.
+      this.prepared.delete(key);
+      this.prepared.set(key, existing);
+      return;
+    }
+    const session = `prepare-${Math.random().toString(36).slice(2)}`;
+    const synthesis = this.engine.synthesize(session, words, this.settings.voice, this.settings.speed);
+    synthesis.catch(() => {
+      if (this.prepared.get(key)?.synthesis === synthesis) this.prepared.delete(key);
+    });
+    this.prepared.set(key, { session, synthesis });
+    while (this.prepared.size > MAX_PREPARED) {
+      const [oldKey, old] = this.prepared.entries().next().value!;
+      this.engine.cancel(old.session); // drops it if still queued
+      this.prepared.delete(oldKey);
+    }
+  }
+
+  private clearPrepared(): void {
+    for (const { session } of this.prepared.values()) this.engine.cancel(session);
+    this.prepared.clear();
   }
 
   private textKey(words: string[]): string {
@@ -207,9 +241,11 @@ export class Player {
     if (!p) {
       const words = this.sentences[i].words.map((w) => w.text);
       // Matched by text, so it is still used correctly if the page changed meanwhile.
-      if (this.prepared?.key === this.textKey(words)) {
-        p = this.prepared.synthesis;
-        this.prepared = null;
+      const key = this.textKey(words);
+      const ready = this.prepared.get(key);
+      if (ready) {
+        p = ready.synthesis;
+        this.prepared.delete(key);
       } else {
         p = this.engine.synthesize(this.session, words, this.settings.voice, this.settings.speed);
       }
