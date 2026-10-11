@@ -1,7 +1,9 @@
 // Dev harness: runs the content script and the engine in one ordinary page, with a
 // tiny stand-in for the chrome.* APIs. `npm run dev`, then open /harness/.
-import { EngineHost } from '../src/engine/host';
-import { ORT_WASM_PATHS } from '../src/engine/ort-wasm';
+import { EngineHost } from '../src/engines/host';
+import { ORT_WASM_PATHS } from '../src/engines/ort-wasm';
+import type { EngineRequest } from '../src/shared/messages';
+import type { ParamValues } from '../src/engines/types';
 
 type Listener = (changes: Record<string, { newValue?: unknown }>, area: string) => void;
 const store: Record<string, unknown> = JSON.parse(localStorage.getItem('narmor-harness') ?? '{}');
@@ -22,19 +24,20 @@ const listeners: Listener[] = [];
   },
   runtime: {
     onMessage: { addListener: () => {} },
+    getURL: (path: string) => `/${path}`,
     sendMessage: async (msg: { type: string }) =>
       msg.type === 'narmor:get-tab-state' ? { enabled: true } : { ok: true },
   },
 };
 
-// ?device=webgpu|wasm&dtype=fp32|fp16 forces an engine configuration.
-const params = new URLSearchParams(location.search);
-const force = params.has('device')
-  ? { device: params.get('device') as 'webgpu' | 'wasm', dtype: (params.get('dtype') ?? 'fp32') as 'fp32' | 'fp16' }
-  : undefined;
-const host = new EngineHost({ modelRoot: '/models/', wasmPaths: ORT_WASM_PATHS, force });
+// ?device=webgpu|wasm&dtype=fp32|fp16 forces Kokoro's device / precision (quality tests).
+const query = new URLSearchParams(location.search);
+const forced: ParamValues = query.has('device') ? { device: query.get('device')!, dtype: query.get('dtype') ?? 'fp32' } : {};
+const host = new EngineHost({ modelRoot: '/models/', wasmPaths: ORT_WASM_PATHS });
+const send = (req: EngineRequest) =>
+  host.handle(req.type === 'synthesize' ? { ...req, params: { ...req.params, ...forced } } : req);
 // Hook for audio-quality capture scripts.
-(window as unknown as { narmorSynth: unknown }).narmorSynth = (words: string[], voice = 'af_heart') =>
-  host.handle({ target: 'offscreen', type: 'synthesize', session: 'capture', words, voice, speed: 1 });
+(window as unknown as { narmorSynth: unknown }).narmorSynth = (words: string[], voice = 'kokoro:af_heart') =>
+  send({ target: 'offscreen', type: 'synthesize', session: 'capture', words, voice, speed: 1, params: { ...forced } });
 const { init } = await import('../src/content/main');
-init((req) => host.handle(req));
+init(send as Parameters<typeof init>[0]);

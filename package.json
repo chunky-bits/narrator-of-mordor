@@ -8,7 +8,7 @@
     "build": "vite build && vite build --mode content",
     "dev": "vite",
     "typecheck": "tsc --noEmit",
-    "icons": "node scripts/make-icons.mjs",
+    "icons": "python3 scripts/make-icons.py",
     "test:engine": "tsx scripts/test-engine.ts"
   },
   "license": "GPL-3.0-or-later",

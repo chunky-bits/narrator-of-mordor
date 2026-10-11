@@ -25,7 +25,8 @@ export const DEFAULT_SETTINGS: Settings = {
   wordHighlight: true,
   articleMode: true,
   autoScroll: true,
-  voice: 'af_heart',
+  /** Global voice id, "<engine>:<voice>". */
+  voice: 'kokoro:af_heart',
   speed: 1,
   volume: 1,
   theme: 'mordor',
@@ -42,9 +43,16 @@ export function activeScheme(s: Settings): HighlightScheme {
 
 const KEY = 'settings';
 
+function normalize(stored: Partial<Settings> | undefined): Settings {
+  const s = { ...DEFAULT_SETTINGS, ...(stored ?? {}) };
+  // Before engine modules, voices were bare Kokoro ids ("af_heart").
+  if (!s.voice.includes(':')) s.voice = `kokoro:${s.voice}`;
+  return s;
+}
+
 export async function loadSettings(): Promise<Settings> {
   const stored = await chrome.storage.sync.get(KEY);
-  return { ...DEFAULT_SETTINGS, ...(stored[KEY] ?? {}) };
+  return normalize(stored[KEY] as Partial<Settings> | undefined);
 }
 
 export async function saveSettings(settings: Settings): Promise<void> {
@@ -53,6 +61,6 @@ export async function saveSettings(settings: Settings): Promise<void> {
 
 export function onSettingsChanged(cb: (s: Settings) => void): void {
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'sync' && changes[KEY]) cb({ ...DEFAULT_SETTINGS, ...(changes[KEY].newValue as Partial<Settings>) });
+    if (area === 'sync' && changes[KEY]) cb(normalize(changes[KEY].newValue as Partial<Settings>));
   });
 }

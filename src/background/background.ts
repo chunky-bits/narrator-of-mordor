@@ -93,6 +93,9 @@ chrome.runtime.onMessage.addListener((msg: BackgroundRequest & { target?: string
         sendResponse({ enabled });
       });
       return true;
+    case 'narmor:open-options':
+      void chrome.runtime.openOptionsPage();
+      return false;
     case 'narmor:ensure-engine':
       ensureEngine().then(
         () => sendResponse({ ok: true }),

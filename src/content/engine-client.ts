@@ -1,3 +1,6 @@
+import type { EngineConfigs } from '../engines/config';
+import { parseVoiceKey } from '../engines/registry';
+import type { ChunkingHint } from '../engines/types';
 import type { EngineRequest, ErrorResponse, SynthesizeResponse } from '../shared/messages';
 
 export interface Synthesis {
@@ -6,8 +9,8 @@ export interface Synthesis {
   words: [number, number][];
   /** Length of the audio in seconds. */
   duration: number;
-  /** Device the engine runs on ('webgpu' or 'wasm'). */
-  device: string;
+  /** How the engine wants requests sized. */
+  chunking: ChunkingHint;
 }
 
 export type EngineSend = (req: EngineRequest) => Promise<SynthesizeResponse | ErrorResponse>;
@@ -27,16 +30,21 @@ export const chromeEngineSend: EngineSend = async (req) => {
 };
 
 export class EngineClient {
-  constructor(private send: EngineSend) {}
+  constructor(
+    private send: EngineSend,
+    /** Current engine configuration (parameters are sent with every request). */
+    private configs: () => EngineConfigs,
+  ) {}
 
   async synthesize(session: string, words: string[], voice: string, speed: number): Promise<Synthesis> {
-    const res = await this.send({ target: 'offscreen', type: 'synthesize', session, words, voice, speed });
+    const params = this.configs()[parseVoiceKey(voice).engine]?.params ?? {};
+    const res = await this.send({ target: 'offscreen', type: 'synthesize', session, words, voice, speed, params });
     if (!res.ok) throw Object.assign(new Error(res.error), { cancelled: res.cancelled ?? false });
     const pcm = decodePcm(res.pcm);
     return {
       words: res.words,
       duration: pcm.length / res.sampleRate,
-      device: res.device,
+      chunking: res.chunking,
       buffer: (ctx) => {
         const buf = ctx.createBuffer(1, pcm.length, res.sampleRate);
         buf.copyToChannel(pcm, 0);

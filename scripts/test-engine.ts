@@ -2,7 +2,7 @@
 // writes a WAV so the alignment can be checked by ear.
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { KokoroEngine, SAMPLE_RATE } from '../src/engine/kokoro';
+import { KokoroEngine, SAMPLE_RATE } from '../src/engines/kokoro/model';
 
 const root = join(import.meta.dirname, '..', 'public', 'models');
 const dtype = (process.argv[2] ?? 'fp32') as 'fp16' | 'fp32';

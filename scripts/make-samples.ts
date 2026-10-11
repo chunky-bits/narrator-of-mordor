@@ -3,8 +3,8 @@
 // Then open samples/index.html to compare them.
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { KokoroEngine, SAMPLE_RATE } from '../src/engine/kokoro';
-import { phonemizeChunk } from '../src/engine/phonemize';
+import { KokoroEngine, SAMPLE_RATE } from '../src/engines/kokoro/model';
+import { phonemizeChunk } from '../src/engines/kokoro/phonemize';
 
 const ROOT = join(import.meta.dirname, '..');
 const MODELS = join(ROOT, 'public', 'models');

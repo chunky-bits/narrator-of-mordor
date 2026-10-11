@@ -6,6 +6,7 @@
 // clock, so highlights follow the exact timings reported by the model.
 import { activeScheme, type Settings } from '../shared/settings';
 import { findArticleRoots } from './article';
+import type { ChunkingHint } from '../engines/types';
 import type { EngineClient, Synthesis } from './engine-client';
 import { Highlighter } from './highlight';
 import { collectSentences, toRange, type Sentence, type Span } from './segment';
@@ -29,18 +30,17 @@ export interface PlayerEvents {
 const REWIND_THRESHOLD = 2;
 /** Pre-generated opening chunks kept around (page: first two chunks; recent selections). */
 const MAX_PREPARED = 4;
-/** Token budget per request: WebGPU is ~7× real time, the WASM fallback only ~2×. */
-const BUDGET = { webgpu: 500, wasm: 250 };
 /** Silence inserted after a paragraph and after a heading. */
 const PARAGRAPH_PAUSE = 0.4;
 const HEADING_PAUSE = 0.6;
 
 /**
  * Chunk sizes ramp up after a start or seek: first a single sentence (sound within
- * ~1 s), then each chunk at most GROWTH × the tokens of the one playing, so it can be
- * synthesised before that one ends (WebGPU runs ~7× real time, WASM ~2.2×), up to BUDGET.
+ * ~1 s), then each chunk at most `growth` × the tokens of the one playing, so it can be
+ * synthesised before that one ends, up to `maxTokens`. Both come from the engine (its
+ * speed depends on the device); these defaults apply until the first response.
  */
-const GROWTH = { webgpu: 4, wasm: 1.6 };
+const DEFAULT_CHUNKING: ChunkingHint = { maxTokens: 500, growth: 4 };
 const MIN_GROWN_BUDGET = 60;
 /** Budget meaning "a single sentence". */
 const ONE_SENTENCE = 0;
@@ -104,7 +104,9 @@ export class Player {
   private playing: { chunk: Chunk; audio: ChunkAudio; from: number } | null = null;
   /** AudioContext time corresponding to t = 0 of the playing chunk. */
   private chunkStartedAt = 0;
-  private device: keyof typeof BUDGET = 'webgpu';
+  private chunking: ChunkingHint = DEFAULT_CHUNKING;
+  /** Budgets used for prepared chunks (to recognise them when playback starts). */
+  private preparedBudgets = new Set<number>();
   private currentWord = -1;
   private raf = 0;
   private highlighter = new Highlighter();
@@ -255,17 +257,7 @@ export class Player {
     if (this.gain) this.gain.gain.value = next.volume;
     this.highlighter.configure(activeScheme(next), next.highlightIntensity);
     const voiceChanged = next.voice !== prev.voice || next.speed !== prev.speed;
-    if (voiceChanged) {
-      this.clearPrepared();
-      if (this.active) {
-        // Regenerate from the current sentence right away rather than finishing a
-        // chunk (up to ~25 s) in the old voice.
-        this.newEpoch(true);
-        this.stopSource();
-        cancelAnimationFrame(this.raf);
-        if (this.state !== 'paused') void this.playFrom(this.index, ONE_SENTENCE);
-      }
-    }
+    if (voiceChanged) this.regenerate();
     if (voiceChanged || next.articleMode !== prev.articleMode) {
       this.prepare(); // what was prepared no longer matches
     }
@@ -277,7 +269,24 @@ export class Player {
     }
   }
 
+  /** Engine parameters changed (options page): audio made with the old ones is stale. */
+  engineConfigChanged(): void {
+    this.regenerate();
+    this.prepare();
+  }
+
   // ---------------------------------------------------------------------------
+
+  /** Drop all synthesised audio; when reading, continue from the current sentence. */
+  private regenerate(): void {
+    this.clearPrepared();
+    if (!this.active) return;
+    // Regenerate right away rather than finishing a chunk (up to ~25 s) the old way.
+    this.newEpoch(true);
+    this.stopSource();
+    cancelAnimationFrame(this.raf);
+    if (this.state !== 'paused') void this.playFrom(this.index, ONE_SENTENCE);
+  }
 
   private ensureAudio(): void {
     if (!this.ctx) {
@@ -337,8 +346,8 @@ export class Player {
 
   /** Token budget for the chunk that follows `chunk`. */
   private nextBudget(chunk: Chunk): number {
-    const full = BUDGET[this.device];
-    return Math.min(full, Math.max(MIN_GROWN_BUDGET, chunk.tokens * GROWTH[this.device]));
+    const { maxTokens, growth } = this.chunking;
+    return Math.min(maxTokens, Math.max(MIN_GROWN_BUDGET, chunk.tokens * growth));
   }
 
   /**
@@ -387,7 +396,7 @@ export class Player {
     // may have been planned before the device (and so the budget) was known.
     let end = -1;
     let synthesis: Promise<Synthesis> | undefined;
-    for (const b of new Set([BUDGET[this.device], BUDGET.webgpu, BUDGET.wasm, budget, ONE_SENTENCE])) {
+    for (const b of new Set([this.chunking.maxTokens, ...this.preparedBudgets, budget, ONE_SENTENCE])) {
       const e = this.planEnd(this.sentences, i, b);
       const key = this.chunkKey(this.sentences, i, e);
       const prep = this.prepared.get(key);
@@ -414,7 +423,7 @@ export class Player {
       tokens: this.sentences.slice(i, end).reduce((n, s) => n + estimateTokens(s), 0),
       ready: false,
       audio: synthesis.then((syn) => {
-        if (syn.device === 'wasm' || syn.device === 'webgpu') this.device = syn.device;
+        this.chunking = syn.chunking;
         const audio = splitChunk(syn, counts);
         audio.bounds.slice(0, -1).forEach((b, k) => this.durations.set(i + k, audio.bounds[k + 1] - b));
         chunk.ready = true;
@@ -459,7 +468,7 @@ export class Player {
     if (this.state === 'playing' || this.state === 'loading') return;
     const sel = selectionRange();
     let sentences: Sentence[] = [];
-    let budget = BUDGET[this.device];
+    let budget = this.chunking.maxTokens;
     if (sel && (this.state === 'idle' || this.selection.hasNewSelection())) {
       // Selections are played soon after they are made: keep it to one quick sentence.
       sentences = this.collectSelection(sel);
@@ -471,11 +480,12 @@ export class Player {
     if (!sentences.length) return; // paused without a new selection: play resumes instead
 
     const end = this.planEnd(sentences, 0, budget);
+    this.preparedBudgets.add(budget).add(this.chunking.maxTokens);
     this.prepareChunk(sentences, 0, end);
     // For the page there is time to spare: also prepare the second chunk, so a short
     // opening (such as a heading) is not followed by a wait.
     if (budget !== ONE_SENTENCE && end < sentences.length) {
-      this.prepareChunk(sentences, end, this.planEnd(sentences, end, BUDGET[this.device]));
+      this.prepareChunk(sentences, end, this.planEnd(sentences, end, this.chunking.maxTokens));
     }
   }
 
@@ -509,6 +519,7 @@ export class Player {
   private clearPrepared(): void {
     for (const { session } of this.prepared.values()) this.engine.cancel(session);
     this.prepared.clear();
+    this.preparedBudgets.clear();
   }
 
   // ---- playback -------------------------------------------------------------------

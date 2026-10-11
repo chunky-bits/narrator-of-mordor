@@ -13,7 +13,8 @@ import {
   type UiTokens,
 } from '../shared/themes';
 import { makePalette, pageIsDark, type RGB } from './color';
-import { VOICES } from '../shared/voices';
+import type { EngineConfigs } from '../engines/config';
+import { ENGINES, voiceKey } from '../engines/registry';
 import type { PlayerState } from './player';
 
 export const BAR_HEIGHT = 56;
@@ -29,6 +30,8 @@ export interface BarCallbacks {
   /** Thumb released at this fraction of the bar. */
   onScrubEnd(fraction: number): void;
   onSettingsChange(settings: Settings): void;
+  /** Open the engine settings (options) page. */
+  onOpenEngineSettings(): void;
 }
 
 const ICONS = {
@@ -119,7 +122,9 @@ button { font: inherit; color: inherit; }
 .seek.dragging .thumb { transform: scale(1.15); transition-duration: .15s; }
 
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.brand svg { width: 28px; height: 28px; flex: none; filter: drop-shadow(0 0 6px var(--accent-glow)); }
+.brand svg, .brand img { width: 28px; height: 28px; flex: none; }
+.brand svg { filter: drop-shadow(0 0 6px var(--accent-glow)); }
+.brand img { object-fit: contain; filter: drop-shadow(0 1px 3px var(--shadow)); }
 .titles { display: flex; flex-direction: column; min-width: 0; }
 .title {
   font-weight: 650; font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
@@ -213,6 +218,13 @@ select {
   background: var(--bg-input); color: var(--text); padding: 0 10px; font: inherit;
 }
 
+.link-btn {
+  border: 1px solid var(--line); background: var(--bg-input); color: var(--text); cursor: pointer;
+  border-radius: 8px; padding: 6px 10px; font-size: 12px; white-space: nowrap;
+}
+.link-btn:hover { border-color: var(--accent); color: var(--accent); }
+.link-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
 /* Appearance: segmented controls and preview cards */
 .seg { display: flex; gap: 2px; padding: 2px; border-radius: 9px; background: var(--bg-input); border: 1px solid var(--line); }
 .seg button {
@@ -279,6 +291,7 @@ export class Bar {
   private dragging = false;
   private scrubTimer = 0;
   private settings: Settings;
+  private engines: EngineConfigs = {};
   private errorTimer = 0;
   private stateText = 'Ready';
 
@@ -292,7 +305,7 @@ export class Bar {
         <div class="progress"></div>
         <div class="seek disabled"><div class="thumb"></div></div>
         <div class="brand">
-          ${ICONS.eye}
+          <img class="logo" alt="" src="${chrome.runtime.getURL('icons/book-64.png')}">
           <div class="titles">
             <span class="title">Narrator of Mordor</span>
             <span class="status" role="status" aria-live="polite">Ready</span>
@@ -322,6 +335,9 @@ export class Bar {
     this.statusEl = this.root.querySelector('.status')!;
     this.countEl = this.root.querySelector('.count')!;
     this.barEl = this.root.querySelector('.bar')!;
+    // Fall back to the inline eye if the page blocks the extension image.
+    const logo = this.root.querySelector<HTMLImageElement>('img.logo')!;
+    logo.addEventListener('error', () => logo.replaceWith(document.createRange().createContextualFragment(ICONS.eye)), { once: true });
     this.seekEl = this.root.querySelector('.seek')!;
     this.initSeek();
 
@@ -477,6 +493,12 @@ export class Bar {
     }, 5000);
   }
 
+  /** Engine configuration changed: the voice list shows only enabled engines. */
+  setEngines(engines: EngineConfigs): void {
+    this.engines = engines;
+    this.renderPanel();
+  }
+
   setSettings(settings: Settings): void {
     // Ignore echoes of our own changes so sliders aren't re-rendered mid-drag.
     if (JSON.stringify(settings) === JSON.stringify(this.settings)) return;
@@ -591,14 +613,22 @@ export class Bar {
         <label for="nm-${key}">${label}<span class="hint">${hint}</span></label>
         <button class="switch" id="nm-${key}" type="button" role="switch" data-key="${key}" aria-checked="${s[key]}"></button>
       </div>`;
-    const groups = (['US', 'UK'] as const)
-      .map(
-        (accent) =>
-          `<optgroup label="${accent === 'US' ? 'American English' : 'British English'}">` +
-          VOICES.filter((v) => v.accent === accent)
-            .map((v) => `<option value="${v.id}" ${v.id === s.voice ? 'selected' : ''}>${v.name} (${v.gender})</option>`)
-            .join('') +
-          '</optgroup>',
+    // Voices of the enabled engines, grouped by language and engine.
+    const languageName = new Intl.DisplayNames(['en'], { type: 'language' });
+    const groups = ENGINES.filter((e) => this.engines[e.id]?.enabled !== false)
+      .flatMap((engine) =>
+        [...new Set(engine.voices.map((v) => v.lang))].map(
+          (lang) =>
+            `<optgroup label="${languageName.of(lang) ?? lang} — ${engine.name}">` +
+            engine.voices
+              .filter((v) => v.lang === lang)
+              .map((v) => {
+                const key = voiceKey(engine.id, v.id);
+                return `<option value="${key}" ${key === s.voice ? 'selected' : ''}>${v.name}${v.gender ? ` (${v.gender})` : ''}</option>`;
+              })
+              .join('') +
+            '</optgroup>',
+        ),
       )
       .join('');
 
@@ -613,6 +643,10 @@ export class Bar {
       <div class="row stack">
         <label for="nm-voice">Voice</label>
         <select id="nm-voice">${groups}</select>
+      </div>
+      <div class="row">
+        <span class="hint">Engines, devices and request sizes</span>
+        <button class="link-btn" type="button" id="nm-engines">Engine settings…</button>
       </div>
       <div class="row stack">
         <div class="head"><label for="nm-speed">Speed</label><span class="value" data-for="speed">${s.speed.toFixed(2)}×</span></div>
@@ -642,6 +676,10 @@ export class Bar {
         this.update({ [key]: next });
       });
     }
+    this.panel.querySelector<HTMLButtonElement>('#nm-engines')!.addEventListener('click', () => {
+      this.togglePanel(false);
+      this.cb.onOpenEngineSettings();
+    });
     this.panel.querySelector<HTMLSelectElement>('#nm-voice')!.addEventListener('change', (e) => {
       this.update({ voice: (e.target as HTMLSelectElement).value });
     });

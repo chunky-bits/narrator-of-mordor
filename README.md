@@ -38,8 +38,26 @@ the bar on a page. The shortcut can be changed at `chrome://extensions/shortcuts
 | Part | File | Role |
 | --- | --- | --- |
 | Service worker | `src/background/background.ts` | Per-tab on/off state, toolbar/shortcut, offscreen lifetime |
-| Offscreen document | `src/offscreen/`, `src/engine/` | Runs Kokoro fp32 (WebGPU, WASM fallback) |
+| Offscreen document | `src/offscreen/`, `src/engines/host.ts` | Runs the TTS engine modules |
+| Engine modules | `src/engines/` | One folder per engine (Kokoro so far), see below |
+| Options page | `options.html`, `src/options/` | Engine settings: enable, parameters, voice previews |
 | Content script | `src/content/` | Bar UI, text extraction, playback, highlighting |
+
+**Engine modules.** Each TTS engine lives in `src/engines/<id>/` as two halves:
+`meta.ts` (name, voices, configurable parameters — imported by the bar and the options
+page) and `engine.ts` (the synthesiser, loaded lazily in the offscreen document only).
+Both are registered in `src/engines/registry.ts`. The options page
+(`chrome://extensions` → Details → Extension options, or "Engine settings…" in the
+bar's menu) renders a form from each module's parameter specs; the values are stored in
+`chrome.storage.sync` and sent along with every synthesis request, since the offscreen
+document cannot read storage. Changing a parameter listed in `reloadParams` (such as
+Kokoro's device) reloads that engine on its next request. Voice ids are
+`<engine>:<voice>`, e.g. `kokoro:af_heart`.
+
+To add an engine: create `src/engines/<id>/meta.ts` exporting an `EngineMeta` and
+`src/engines/<id>/engine.ts` exporting an `EngineImpl` (see `src/engines/types.ts`),
+then add both to `registry.ts`. Its voices appear in the bar and its settings on the
+options page automatically.
 
 **Exact word timing.** The model export used
 ([`onnx-community/Kokoro-82M-v1.0-ONNX-timestamped`](https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX-timestamped))

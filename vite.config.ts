@@ -42,6 +42,7 @@ export default defineConfig(({ mode }) => {
         input: {
           background: resolve(import.meta.dirname, 'src/background/background.ts'),
           offscreen: resolve(import.meta.dirname, 'offscreen.html'),
+          options: resolve(import.meta.dirname, 'options.html'),
         },
         output: {
           entryFileNames: '[name].js',

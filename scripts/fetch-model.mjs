@@ -9,7 +9,7 @@ const REPO = 'onnx-community/Kokoro-82M-v1.0-ONNX-timestamped';
 const BASE = `https://huggingface.co/${REPO}/resolve/main`;
 const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', 'public', 'models', 'kokoro');
 
-// Keep in sync with src/shared/voices.ts
+// Keep in sync with src/engines/kokoro/meta.ts
 const VOICES = [
   'af_heart', 'af_alloy', 'af_aoede', 'af_bella', 'af_jessica', 'af_kore', 'af_nicole', 'af_nova',
   'af_river', 'af_sarah', 'af_sky', 'am_adam', 'am_echo', 'am_eric', 'am_fenrir', 'am_liam',

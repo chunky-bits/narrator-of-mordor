@@ -1,25 +1,34 @@
-// Messages between the content script, the background service worker and the
-// offscreen document that runs the TTS model.
+// Messages between the content script / options page, the background service worker
+// and the offscreen document that runs the TTS engines.
+import type { ChunkingHint, ParamValues } from '../engines/types';
 
-/** content → background */
+/** content / options page → background */
 export type BackgroundRequest =
   | { type: 'narmor:get-tab-state' }
-  | { type: 'narmor:ensure-engine' };
+  | { type: 'narmor:ensure-engine' }
+  | { type: 'narmor:open-options' };
 
 /** background → content */
 export type ContentMessage = { type: 'narmor:set-enabled'; enabled: boolean };
 
-/** content → offscreen (sent with chrome.runtime.sendMessage, ignored by background) */
+/**
+ * → offscreen (sent with chrome.runtime.sendMessage, ignored by background). The
+ * offscreen document cannot read chrome.storage, so each request carries the
+ * parameters of the engine it targets.
+ */
 export type EngineRequest =
   | {
       target: 'offscreen';
       type: 'synthesize';
       session: string;
       words: string[];
+      /** Global voice id, "<engine>:<voice>". */
       voice: string;
       speed: number;
+      params: ParamValues;
     }
-  | { target: 'offscreen'; type: 'cancel'; session: string };
+  | { target: 'offscreen'; type: 'cancel'; session: string }
+  | { target: 'offscreen'; type: 'status' };
 
 export interface SynthesizeResponse {
   ok: true;
@@ -28,8 +37,14 @@ export interface SynthesizeResponse {
   sampleRate: number;
   /** [start, end] in seconds for each input word. */
   words: [number, number][];
-  /** Device the engine runs on ('webgpu' or 'wasm'); the player sizes requests by it. */
-  device: string;
+  /** How the player should size requests for this engine. */
+  chunking: ChunkingHint;
+}
+
+export interface StatusResponse {
+  ok: true;
+  /** Runtime status per loaded engine, e.g. { kokoro: "WebGPU, fp32" }. */
+  engines: Record<string, string>;
 }
 
 export interface ErrorResponse {

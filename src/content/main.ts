@@ -1,4 +1,6 @@
 // Content script entry: shows/hides the bar for this tab and wires it to the player.
+import { loadEngineConfigs, onEngineConfigsChanged, type EngineConfigs } from '../engines/config';
+import { ENGINES, findVoice, voiceKey } from '../engines/registry';
 import type { ContentMessage } from '../shared/messages';
 import { loadSettings, onSettingsChanged, saveSettings, type Settings } from '../shared/settings';
 import { Bar, BAR_HEIGHT } from './bar';
@@ -17,11 +19,23 @@ export function init(send: EngineSend = chromeEngineSend): void {
 
   let narrator: Narrator | null = null;
   let settings: Settings;
+  let engines: EngineConfigs = {};
   let saveTimer = 0;
+
+  /** If the selected voice's engine is disabled (or gone), switch to an available voice. */
+  const ensureVoice = (s: Settings): Settings => {
+    const found = findVoice(s.voice);
+    if (found && engines[found.meta.id]?.enabled !== false) return s;
+    const engine = ENGINES.find((e) => engines[e.id]?.enabled !== false) ?? ENGINES[0];
+    const next = { ...s, voice: voiceKey(engine.id, engine.voices[0].id) };
+    void saveSettings(next);
+    return next;
+  };
 
   const show = async () => {
     if (narrator) return;
-    settings = await loadSettings();
+    engines = await loadEngineConfigs();
+    settings = ensureVoice(await loadSettings());
     const bar: Bar = new Bar(settings, {
       onPlayPause: () => player.toggle(),
       onBack: () => player.back(),
@@ -36,9 +50,11 @@ export function init(send: EngineSend = chromeEngineSend): void {
         clearTimeout(saveTimer);
         saveTimer = window.setTimeout(() => void saveSettings(next), 300);
       },
+      onOpenEngineSettings: () => void chrome.runtime.sendMessage({ type: 'narmor:open-options' }),
     });
+    bar.setEngines(engines);
     const player: Player = new Player(
-      new EngineClient(send),
+      new EngineClient(send, () => engines),
       settings,
       {
         onState: (state, detail) => bar.setState(state, detail),
@@ -65,6 +81,20 @@ export function init(send: EngineSend = chromeEngineSend): void {
     settings = next;
     narrator?.player.updateSettings(next);
     narrator?.bar.setSettings(next);
+  });
+
+  onEngineConfigsChanged((next) => {
+    // Changed on the options page: new parameters apply to newly synthesised audio.
+    engines = next;
+    if (!narrator) return;
+    narrator.bar.setEngines(next);
+    const s = ensureVoice(settings);
+    if (s !== settings) {
+      settings = s;
+      narrator.bar.setSettings(s);
+      narrator.player.updateSettings(s);
+    }
+    narrator.player.engineConfigChanged();
   });
 
   chrome.runtime.onMessage.addListener((msg: ContentMessage) => {
