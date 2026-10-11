@@ -15,6 +15,10 @@ open-weight TTS model that runs entirely on your machine — no cloud, no API ke
 - Exact sentence and word highlighting, coloured as variations of the site's own background
 - Selection is hidden while reading and restored on pause or when finished
 - Voice (27 US/UK English voices), speed, volume and auto-scroll settings
+- Colour themes for the bar and menu (Mordor, Shire, Rivendell, Gondor), each in light
+  and dark, following a fixed mode, the system or the page; highlight colour schemes
+  (Classic, Ember, Forest, Mono — matching the theme by default) with three intensities,
+  all with live previews in the settings menu
 - Per-tab toggle that survives reloads and navigation; shortcut **Alt+Shift+N**
 
 ## Build and install
@@ -73,6 +77,7 @@ npm run test:engine  # synthesises a sentence in Node, prints word timings, writ
 npx tsx scripts/make-samples.ts  # renders A/B narration samples into samples/ (open samples/index.html)
 ```
 
+`/harness/palettes.html` shows every highlight scheme on representative page backgrounds.
 The harness page runs the content script and the engine together with a small
 stand-in for the `chrome.*` APIs, which is the quickest way to iterate on the UI.
 

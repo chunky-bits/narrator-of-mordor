@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Highlight palettes</title>
+    <style>
+      body { font: 13px system-ui, sans-serif; margin: 16px; background: #888; }
+      table { border-collapse: separate; border-spacing: 6px; }
+      th { text-align: left; font-weight: 600; color: #111; }
+      td { padding: 8px 10px; border-radius: 6px; font: 15px/1.4 Georgia, serif; white-space: nowrap; }
+      .controls { margin-bottom: 8px; }
+    </style>
+  </head>
+  <body>
+    <div class="controls">
+      Intensity:
+      <select id="intensity"><option>subtle</option><option selected>normal</option><option>strong</option></select>
+    </div>
+    <table id="grid"></table>
+    <script type="module">
+      // Dev aid: every highlight scheme on representative page backgrounds.
+      import { makePalette } from '../src/content/color.ts';
+      import { SCHEMES } from '../src/shared/themes.ts';
+
+      const BACKGROUNDS = [
+        ['White', [255, 255, 255], [31, 31, 31]],
+        ['Off-white', [250, 247, 240], [34, 34, 34]],
+        ['Peach note', [253, 230, 216], [34, 34, 34]],
+        ['Green aside', [233, 241, 228], [34, 34, 34]],
+        ['Navy callout', [30, 42, 68], [232, 236, 248]],
+        ['Dark page', [29, 29, 31], [232, 232, 232]],
+      ];
+      const render = () => {
+        const intensity = document.getElementById('intensity').value;
+        const rows = Object.values(SCHEMES).map((scheme) => {
+          const cells = BACKGROUNDS.map(([, bg, text]) => {
+            const p = makePalette(bg, text, scheme, intensity);
+            return `<td style="background:rgb(${bg});color:rgb(${text})"><span style="background:${p.sentence}">Fire and <span style="background:${p.word}">ash</span> fell</span></td>`;
+          });
+          return `<tr><th>${scheme.name}</th>${cells.join('')}</tr>`;
+        });
+        document.getElementById('grid').innerHTML =
+          `<tr><th></th>${BACKGROUNDS.map(([n]) => `<th>${n}</th>`).join('')}</tr>` + rows.join('');
+      };
+      document.getElementById('intensity').addEventListener('change', render);
+      render();
+    </script>
+  </body>
+</html>

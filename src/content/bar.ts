@@ -1,6 +1,18 @@
 // The bottom navigation bar and its settings menu, isolated in a closed shadow root
 // so page styles cannot reach in (and ours cannot leak out).
 import type { Settings } from '../shared/settings';
+import {
+  SCHEMES,
+  THEMES,
+  type HighlightScheme,
+  type Intensity,
+  type ModeSetting,
+  type SchemeId,
+  type ThemeId,
+  type ThemeMode,
+  type UiTokens,
+} from '../shared/themes';
+import { makePalette, pageIsDark, type RGB } from './color';
 import { VOICES } from '../shared/voices';
 import type { PlayerState } from './player';
 
@@ -30,6 +42,20 @@ const ICONS = {
   eye: '<svg viewBox="0 0 32 32" aria-hidden="true"><defs><radialGradient id="nm-iris" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#ffe08a"/><stop offset=".45" stop-color="#ff8a1f"/><stop offset="1" stop-color="#b8300a"/></radialGradient></defs><path d="M2 16C6.5 8.5 11 6 16 6s9.5 2.5 14 10c-4.5 7.5-9 10-14 10S6.5 23.5 2 16z" fill="url(#nm-iris)"/><path d="M16 8.5c1.1 2.2 1.6 4.7 1.6 7.5s-.5 5.3-1.6 7.5c-1.1-2.2-1.6-4.7-1.6-7.5s.5-5.3 1.6-7.5z" fill="#140c08"/></svg>',
 };
 
+const tokenCss = (t: UiTokens) =>
+  Object.entries(t)
+    .map(([k, v]) => `--${k}:${v};`)
+    .join('');
+
+/** One rule per theme × mode, selected by the host's data-theme / data-mode attributes. */
+const THEME_CSS = Object.values(THEMES)
+  .flatMap((theme) =>
+    (['dark', 'light'] as ThemeMode[]).map(
+      (mode) => `:host([data-theme="${theme.id}"][data-mode="${mode}"]){${tokenCss(theme.modes[mode])}color-scheme:${mode};}`,
+    ),
+  )
+  .join('\n');
+
 const CSS = /* css */ `
 :host {
   all: initial;
@@ -37,18 +63,12 @@ const CSS = /* css */ `
   left: 0; right: 0; bottom: 0;
   z-index: 2147483647 !important;
   display: block !important;
-  --bg: #15110e;
-  --bg-raised: #1f1915;
-  --line: #3a2e25;
-  --text: #f3e9df;
-  --muted: #a8968a;
-  --ember: #ff7a1a;
-  --ember-deep: #c2410c;
-  --ember-glow: rgba(255, 122, 26, .45);
+  ${tokenCss(THEMES.mordor.modes.dark)}
   font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   color: var(--text);
   color-scheme: dark;
 }
+${THEME_CSS}
 * { box-sizing: border-box; }
 button { font: inherit; color: inherit; }
 
@@ -60,15 +80,15 @@ button { font: inherit; color: inherit; }
   align-items: center;
   gap: 12px;
   padding: 0 16px;
-  background: linear-gradient(180deg, #1b1612 0%, var(--bg) 100%);
+  background: linear-gradient(180deg, var(--bg-top) 0%, var(--bg) 100%);
   border-top: 1px solid var(--line);
-  box-shadow: 0 -8px 24px rgba(0, 0, 0, .35);
+  box-shadow: 0 -8px 24px var(--shadow);
 }
 .bar { --p: 0; }
 .progress {
   position: absolute; left: 0; top: -1px; height: 2px; width: 100%;
-  background: linear-gradient(90deg, var(--ember-deep), var(--ember));
-  box-shadow: 0 0 8px var(--ember-glow);
+  background: linear-gradient(90deg, var(--accent-deep), var(--accent));
+  box-shadow: 0 0 8px var(--accent-glow);
   /* --p is driven every animation frame from the audio clock; no CSS transition. */
   transform: scaleX(var(--p));
   transform-origin: 0 50%;
@@ -84,8 +104,8 @@ button { font: inherit; color: inherit; }
 .thumb {
   position: absolute; top: 50%; left: calc(var(--p) * 100%);
   width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #ffd2a1, var(--ember) 55%, var(--ember-deep));
-  box-shadow: 0 0 10px var(--ember-glow);
+  background: radial-gradient(circle at 35% 30%, var(--accent-hi), var(--accent) 55%, var(--accent-deep));
+  box-shadow: 0 0 10px var(--accent-glow);
   opacity: 0; transform: scale(.5);
   /* Fade-out (transition of the state being entered: back to hidden). */
   transition: opacity .6s ease-in-out, transform .6s ease-in-out;
@@ -99,29 +119,29 @@ button { font: inherit; color: inherit; }
 .seek.dragging .thumb { transform: scale(1.15); transition-duration: .15s; }
 
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.brand svg { width: 28px; height: 28px; flex: none; filter: drop-shadow(0 0 6px var(--ember-glow)); }
+.brand svg { width: 28px; height: 28px; flex: none; filter: drop-shadow(0 0 6px var(--accent-glow)); }
 .titles { display: flex; flex-direction: column; min-width: 0; }
 .title {
   font-weight: 650; font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
   white-space: nowrap;
 }
 .status { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.status.error { color: #ff9b7a; }
+.status.error { color: var(--error); }
 
 .play {
   width: 42px; height: 42px; border-radius: 50%;
   display: grid; place-items: center;
   border: none; cursor: pointer;
-  background: radial-gradient(circle at 35% 30%, #ffb15c, var(--ember) 45%, var(--ember-deep));
-  color: #1a0d05;
-  box-shadow: 0 0 0 1px rgba(255,255,255,.08) inset, 0 0 14px var(--ember-glow);
+  background: radial-gradient(circle at 35% 30%, var(--accent-hi), var(--accent) 45%, var(--accent-deep));
+  color: var(--on-accent);
+  box-shadow: 0 0 0 1px rgba(255,255,255,.08) inset, 0 0 14px var(--accent-glow);
   transition: transform .12s ease, box-shadow .2s ease;
   position: relative;
 }
-.play:hover { transform: scale(1.06); box-shadow: 0 0 0 1px rgba(255,255,255,.12) inset, 0 0 22px var(--ember-glow); }
+.play:hover { transform: scale(1.06); box-shadow: 0 0 0 1px rgba(255,255,255,.12) inset, 0 0 22px var(--accent-glow); }
 .play:active { transform: scale(.96); }
 .play:focus-visible, .icon-btn:focus-visible, .switch:focus-visible, select:focus-visible, input:focus-visible {
-  outline: 2px solid var(--ember); outline-offset: 2px;
+  outline: 2px solid var(--accent); outline-offset: 2px;
 }
 .play svg { width: 20px; height: 20px; fill: currentColor; }
 
@@ -133,13 +153,13 @@ button { font: inherit; color: inherit; }
   transition: background .15s, color .15s, opacity .15s;
 }
 .skip svg { width: 17px; height: 17px; fill: currentColor; }
-.skip:hover:not(:disabled) { background: var(--bg-raised); color: var(--ember); }
+.skip:hover:not(:disabled) { background: var(--bg-raised); color: var(--accent); }
 .skip:active:not(:disabled) { transform: scale(.94); }
 .skip:disabled { opacity: .3; cursor: default; }
-.skip:focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; }
+.skip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .play.loading::after {
   content: ""; position: absolute; inset: -5px; border-radius: 50%;
-  border: 2px solid transparent; border-top-color: var(--ember); border-right-color: var(--ember);
+  border: 2px solid transparent; border-top-color: var(--accent); border-right-color: var(--accent);
   animation: spin .9s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -157,18 +177,18 @@ button { font: inherit; color: inherit; }
 
 .panel {
   position: absolute; right: 12px; bottom: calc(100% + 10px);
-  width: min(320px, calc(100vw - 24px));
+  width: min(344px, calc(100vw - 24px));
   max-height: min(70vh, 560px); overflow: auto;
   background: var(--bg-raised);
   border: 1px solid var(--line); border-radius: 14px;
-  box-shadow: 0 18px 48px rgba(0,0,0,.5);
+  box-shadow: 0 18px 48px var(--shadow);
   padding: 6px 0 10px;
   transform-origin: bottom right;
   animation: rise .16s ease-out;
 }
 .panel[hidden] { display: none; }
 @keyframes rise { from { opacity: 0; transform: translateY(6px) scale(.98); } }
-.section { padding: 10px 16px 4px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--ember); font-weight: 650; }
+.section { padding: 10px 16px 4px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); font-weight: 650; }
 .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 16px; }
 .row label { cursor: pointer; }
 .row .hint { display: block; color: var(--muted); font-size: 11.5px; }
@@ -178,21 +198,61 @@ button { font: inherit; color: inherit; }
 
 .switch {
   flex: none; width: 38px; height: 22px; border-radius: 999px; border: 1px solid var(--line);
-  background: #2c241e; position: relative; cursor: pointer; padding: 0;
+  background: var(--bg-input); position: relative; cursor: pointer; padding: 0;
   transition: background .2s, border-color .2s;
 }
 .switch::after {
   content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
   background: var(--muted); transition: transform .2s ease, background .2s;
 }
-.switch[aria-checked="true"] { background: var(--ember-deep); border-color: var(--ember); }
-.switch[aria-checked="true"]::after { transform: translateX(16px); background: #fff4ea; }
+.switch[aria-checked="true"] { background: var(--accent-deep); border-color: var(--accent); }
+.switch[aria-checked="true"]::after { transform: translateX(16px); background: #fff; }
 
 select {
   width: 100%; height: 34px; border-radius: 8px; border: 1px solid var(--line);
-  background: #2a221c; color: var(--text); padding: 0 10px; font: inherit;
+  background: var(--bg-input); color: var(--text); padding: 0 10px; font: inherit;
 }
-input[type=range] { width: 100%; accent-color: var(--ember); }
+
+/* Appearance: segmented controls and preview cards */
+.seg { display: flex; gap: 2px; padding: 2px; border-radius: 9px; background: var(--bg-input); border: 1px solid var(--line); }
+.seg button {
+  flex: 1; height: 28px; border: none; border-radius: 7px; background: transparent; cursor: pointer;
+  color: var(--muted); font-size: 12px;
+}
+.seg button[aria-checked="true"] { background: var(--bg-raised); color: var(--text); box-shadow: 0 1px 3px var(--shadow); }
+.seg button:focus-visible, .card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.card {
+  display: flex; flex-direction: column; gap: 6px; padding: 6px; text-align: left; cursor: pointer;
+  border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text);
+}
+.card[aria-checked="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.card .name { font-size: 12px; font-weight: 600; padding: 0 2px; }
+.card .mood { display: block; font-size: 10.5px; color: var(--muted); font-weight: 400; }
+/* Miniature bar in the card's own theme */
+.mini-bar {
+  position: relative; height: 26px; border-radius: 6px; overflow: hidden;
+  display: flex; align-items: center; gap: 6px; padding: 0 7px;
+  background: linear-gradient(180deg, var(--bg-top), var(--bg)); border: 1px solid var(--line);
+}
+.mini-bar::before { content: ""; position: absolute; left: 0; top: 0; height: 2px; width: 45%; background: var(--accent); }
+.mini-bar .lines { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.mini-bar .lines i { display: block; height: 3px; border-radius: 2px; background: var(--text); width: 70%; }
+.mini-bar .lines i + i { background: var(--muted); width: 45%; }
+.mini-bar .dot {
+  width: 14px; height: 14px; border-radius: 50%; flex: none;
+  background: radial-gradient(circle at 35% 30%, var(--accent-hi), var(--accent) 50%, var(--accent-deep));
+}
+.mini-bar .swatch { width: 9px; height: 9px; border-radius: 3px; background: var(--bg-raised); border: 1px solid var(--line); }
+/* Highlight samples on a light and a dark page */
+.hl { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.hl span.page {
+  display: block; padding: 4px 5px; border-radius: 5px; font: 11px/1.3 Georgia, serif; white-space: nowrap; overflow: hidden;
+}
+.hl .page.light { background: #ffffff; color: #1f1f1f; border: 1px solid #e3e3e3; }
+.hl .page.dark { background: #1d1d1f; color: #e8e8e8; border: 1px solid #333; }
+.hl .page b { font-weight: inherit; border-radius: 2px; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
 
 @media (max-width: 560px) {
   .title, .count { display: none; }
@@ -212,6 +272,8 @@ export class Bar {
   private statusEl: HTMLElement;
   private countEl: HTMLElement;
   private barEl: HTMLElement;
+  private systemDark = matchMedia('(prefers-color-scheme: dark)');
+  private pageModeTimer = 0;
   private seekEl: HTMLElement;
   private position = 0;
   private dragging = false;
@@ -284,17 +346,47 @@ export class Bar {
     });
     document.addEventListener('pointerdown', this.onOutsidePointer, true);
 
+    this.applyTheme();
     this.renderPanel();
   }
 
   mount(): void {
     document.documentElement.append(this.host);
+    this.systemDark.addEventListener('change', this.onModeSignal);
+    // "Follow page": pages can switch between light and dark (or navigate in-app).
+    this.pageModeTimer = window.setInterval(() => {
+      if (this.settings.mode === 'page') this.onModeSignal();
+    }, 3000);
+    this.applyTheme();
   }
 
   unmount(): void {
     document.removeEventListener('pointerdown', this.onOutsidePointer, true);
+    this.systemDark.removeEventListener('change', this.onModeSignal);
+    clearInterval(this.pageModeTimer);
     this.host.remove();
   }
+
+  /** The light/dark variant in effect for the current mode setting. */
+  private resolveMode(): ThemeMode {
+    const m = this.settings.mode;
+    if (m === 'light' || m === 'dark') return m;
+    if (m === 'system') return this.systemDark.matches ? 'dark' : 'light';
+    return pageIsDark() ? 'dark' : 'light';
+  }
+
+  private applyTheme(): void {
+    const theme = THEMES[this.settings.theme] ? this.settings.theme : 'mordor';
+    this.host.dataset.theme = theme;
+    this.host.dataset.mode = this.resolveMode();
+  }
+
+  private onModeSignal = (): void => {
+    const before = this.host.dataset.mode;
+    this.applyTheme();
+    // Theme cards preview the variant in effect, so refresh them when it flips.
+    if (this.host.dataset.mode !== before) this.renderPanel();
+  };
 
   setState(state: PlayerState, detail?: string): void {
     this.host.dataset.state = state;
@@ -389,6 +481,7 @@ export class Bar {
     // Ignore echoes of our own changes so sliders aren't re-rendered mid-drag.
     if (JSON.stringify(settings) === JSON.stringify(this.settings)) return;
     this.settings = settings;
+    this.applyTheme();
     this.renderPanel();
   }
 
@@ -409,10 +502,90 @@ export class Bar {
   private update(patch: Partial<Settings>): void {
     this.settings = { ...this.settings, ...patch };
     this.cb.onSettingsChange(this.settings);
+    if ('theme' in patch || 'mode' in patch || 'highlightScheme' in patch || 'highlightIntensity' in patch) {
+      this.applyTheme();
+      this.renderPanel(); // checked states and previews
+    }
+  }
+
+  // ---- appearance previews ------------------------------------------------------
+
+  /** Sample sentence with its sentence and word highlight, on a light and a dark page. */
+  private highlightSample(scheme: HighlightScheme, intensity: Intensity): string {
+    const page = (cls: string, bg: RGB, text: RGB) => {
+      const p = makePalette(bg, text, scheme, intensity);
+      return `<span class="page ${cls}"><b style="background:${p.sentence}">Fire and <b style="background:${p.word}">ash</b> fell</b></span>`;
+    };
+    return `<div class="hl" aria-hidden="true">${page('light', [255, 255, 255], [31, 31, 31])}${page('dark', [29, 29, 31], [232, 232, 232])}</div>`;
+  }
+
+  private themeCard(id: ThemeId, mode: ThemeMode): string {
+    const t = THEMES[id];
+    const checked = this.settings.theme === id;
+    return `
+      <button class="card" type="button" role="radio" aria-checked="${checked}" data-theme-id="${id}"
+        aria-label="${t.name} theme: ${t.mood}">
+        <div class="mini-bar" style="${tokenCss(t.modes[mode])}" aria-hidden="true">
+          <span class="lines"><i></i><i></i></span><span class="dot"></span><span class="swatch"></span>
+        </div>
+        ${this.highlightSample(SCHEMES[t.highlight], this.settings.highlightIntensity)}
+        <span class="name">${t.name}<span class="mood">${t.mood}</span></span>
+      </button>`;
+  }
+
+  private schemeCard(id: SchemeId | 'theme'): string {
+    const scheme = id === 'theme' ? SCHEMES[THEMES[this.settings.theme].highlight] : SCHEMES[id];
+    const name = id === 'theme' ? `Match theme` : scheme.name;
+    const sub = id === 'theme' ? scheme.name : '&nbsp;';
+    return `
+      <button class="card" type="button" role="radio" aria-checked="${this.settings.highlightScheme === id}"
+        data-scheme-id="${id}" aria-label="Highlight scheme: ${name}${id === 'theme' ? ` (${scheme.name})` : ''}">
+        ${this.highlightSample(scheme, this.settings.highlightIntensity)}
+        <span class="name">${name}<span class="mood">${sub}</span></span>
+      </button>`;
+  }
+
+  private segmented<T extends string>(key: keyof Settings, label: string, options: [T, string][]): string {
+    const current = this.settings[key];
+    return `
+      <div class="row stack">
+        <span>${label}</span>
+        <div class="seg" role="radiogroup" aria-label="${label}">
+          ${options.map(([v, text]) => `<button type="button" role="radio" data-seg="${key}" data-value="${v}" aria-checked="${current === v}">${text}</button>`).join('')}
+        </div>
+      </div>`;
+  }
+
+  private appearanceSection(): string {
+    const mode = this.resolveMode();
+    return `
+      <div class="section">Appearance</div>
+      ${this.segmented<ModeSetting>('mode', 'Mode', [['light', 'Light'], ['dark', 'Dark'], ['system', 'System'], ['page', 'Page']])}
+      <div class="row stack">
+        <span>Theme</span>
+        <div class="cards" role="radiogroup" aria-label="Theme">
+          ${(Object.keys(THEMES) as ThemeId[]).map((id) => this.themeCard(id, mode)).join('')}
+        </div>
+      </div>
+      <div class="row stack">
+        <span>Highlight colours</span>
+        <div class="cards" role="radiogroup" aria-label="Highlight colours">
+          ${(['theme', ...Object.keys(SCHEMES)] as (SchemeId | 'theme')[]).map((id) => this.schemeCard(id)).join('')}
+        </div>
+      </div>
+      ${this.segmented<Intensity>('highlightIntensity', 'Highlight intensity', [['subtle', 'Subtle'], ['normal', 'Normal'], ['strong', 'Strong']])}`;
   }
 
   private renderPanel(): void {
     const s = this.settings;
+    // Keep scroll position and keyboard focus across re-renders.
+    const scrollTop = this.panel.scrollTop;
+    const focused = this.root.activeElement as HTMLElement | null;
+    const focusKey = focused && this.panel.contains(focused)
+      ? (focused.id ? `#${focused.id}` : focused.dataset.themeId ? `[data-theme-id="${focused.dataset.themeId}"]`
+        : focused.dataset.schemeId ? `[data-scheme-id="${focused.dataset.schemeId}"]`
+        : focused.dataset.seg ? `[data-seg="${focused.dataset.seg}"][data-value="${focused.dataset.value}"]` : null)
+      : null;
     const sw = (key: keyof Settings, label: string, hint: string) => `
       <div class="row">
         <label for="nm-${key}">${label}<span class="hint">${hint}</span></label>
@@ -448,7 +621,18 @@ export class Bar {
       <div class="row stack">
         <div class="head"><label for="nm-volume">Volume</label><span class="value" data-for="volume">${Math.round(s.volume * 100)}%</span></div>
         <input id="nm-volume" type="range" min="0" max="1" step="0.01" value="${s.volume}">
-      </div>`;
+      </div>
+      ${this.appearanceSection()}`;
+
+    for (const card of this.panel.querySelectorAll<HTMLButtonElement>('[data-theme-id]')) {
+      card.addEventListener('click', () => this.update({ theme: card.dataset.themeId as ThemeId }));
+    }
+    for (const card of this.panel.querySelectorAll<HTMLButtonElement>('[data-scheme-id]')) {
+      card.addEventListener('click', () => this.update({ highlightScheme: card.dataset.schemeId as SchemeId | 'theme' }));
+    }
+    for (const btn of this.panel.querySelectorAll<HTMLButtonElement>('[data-seg]')) {
+      btn.addEventListener('click', () => this.update({ [btn.dataset.seg!]: btn.dataset.value }));
+    }
 
     for (const btn of this.panel.querySelectorAll<HTMLButtonElement>('.switch')) {
       btn.addEventListener('click', () => {
@@ -471,5 +655,7 @@ export class Bar {
       volumeValue.textContent = `${Math.round(Number(volume.value) * 100)}%`;
       this.update({ volume: Number(volume.value) });
     });
+    this.panel.scrollTop = scrollTop;
+    if (focusKey) this.panel.querySelector<HTMLElement>(focusKey)?.focus();
   }
 }

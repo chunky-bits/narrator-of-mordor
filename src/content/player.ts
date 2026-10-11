@@ -4,7 +4,7 @@
 // first sound) to a full token budget. Each chunk plays as one continuous audio source
 // in the page's AudioContext; the current sentence and word are derived from the audio
 // clock, so highlights follow the exact timings reported by the model.
-import type { Settings } from '../shared/settings';
+import { activeScheme, type Settings } from '../shared/settings';
 import { findArticleRoots } from './article';
 import type { EngineClient, Synthesis } from './engine-client';
 import { Highlighter } from './highlight';
@@ -132,6 +132,7 @@ export class Player {
     private bottomInset: () => number,
   ) {
     document.addEventListener('selectionchange', this.onSelectionChange);
+    this.highlighter.configure(activeScheme(settings), settings.highlightIntensity);
   }
 
   /** Play/pause button. Must be called from a user gesture (creates the AudioContext). */
@@ -252,6 +253,7 @@ export class Player {
     const prev = this.settings;
     this.settings = next;
     if (this.gain) this.gain.gain.value = next.volume;
+    this.highlighter.configure(activeScheme(next), next.highlightIntensity);
     const voiceChanged = next.voice !== prev.voice || next.speed !== prev.speed;
     if (voiceChanged) {
       this.clearPrepared();
