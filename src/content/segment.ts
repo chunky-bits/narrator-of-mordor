@@ -180,7 +180,13 @@ function collectRuns(roots: Node[], opts: CollectOptions): Run[] {
       cached = true;
     } else if (el.matches(ALWAYS_SKIP) || (opts.articleMode && !isRoot && el.matches(ARTICLE_SKIP))) {
       cached = true;
-    } else if (!el.checkVisibility({ visibilityProperty: true, checkVisibilityCSS: true } as CheckVisibilityOptions)) {
+    } else if (
+      !el.checkVisibility({ visibilityProperty: true, checkVisibilityCSS: true } as CheckVisibilityOptions) &&
+      // display: contents elements have no box of their own, so checkVisibility()
+      // reports them invisible although their children render normally (Google's AI
+      // Overview sits inside one). Their children are checked individually.
+      getComputedStyle(el).display !== 'contents'
+    ) {
       cached = true;
     } else {
       // Article-only rules apply inside the root, never to its ancestors (the article
