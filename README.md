@@ -1,31 +1,71 @@
+<p align="center">
+  <img src="public/icons/logo-256.png" alt="Narrator of Mordor logo" width="200">
+</p>
+
 # Narrator of Mordor
 
-A Chrome extension that reads web pages aloud with local, open-weight TTS models that
-run entirely on your machine — no cloud, no API keys:
+Narrator of Mordor is a Chrome extension that reads web pages aloud. Open its bar on any
+page, press play and it narrates the article — or just the text you selected — while
+highlighting each sentence and word as it is spoken. Speech is generated locally by
+open-weight text-to-speech models running in your browser: nothing is sent to a server,
+and there are no accounts or API keys. Use it to listen to long articles, to follow
+along while reading, or to speed-read.
 
-- **Kokoro** — high-quality English (US/UK) voices with exact word timing
-- **Supertonic 3** — natural voices in 31 languages including Dutch, one model for all
+![Narrator of Mordor reading a Wikipedia article, with the current sentence tinted and the spoken word highlighted](docs/reading.webp)
 
-- Bottom bar with play/pause, a settings menu (gear) and transport controls:
-  - Back: start of the paragraph, or the previous paragraph within its first 2 s
-  - Rewind: start of the sentence, or the previous sentence within its first 2 s
-  - Forward / Skip: next sentence / next paragraph
-- Smooth progress line with a hover-revealed thumb; drag it to jump to the sentence
-  under it (the thumb snaps to that sentence's start on release)
-- Paragraphs are detected automatically from the page structure; short lists and
-  tables count as one paragraph, headings as their own
-- Reads the selected text, or the whole page / detected main article
-- Exact sentence and word highlighting, coloured as variations of the site's own background
-- Selection is hidden while reading and restored on pause or when finished
-- Voice (27 US/UK English voices), speed, volume and auto-scroll settings
-- Colour themes for the bar and menu (Mordor, Shire, Rivendell, Gondor), each in light
-  and dark, following a fixed mode, the system or the page; highlight colour schemes
-  (Classic, Ember, Forest, Mono — matching the theme by default) with three intensities,
-  all with live previews in the settings menu
-- Speed reading (RSVP): a bar above the navigation bar shows the current word with its
-  focus letter fixed at the centre (and optionally the neighbouring words), in sync with
-  the voice; narration can be muted while it is shown; three text sizes
-- Per-tab toggle that survives reloads and navigation; shortcut **Alt+Shift+N**
+## TTS
+
+Text-to-speech runs in a hidden extension page (an offscreen document) on WebGPU when
+available, with a CPU (WebAssembly) fallback. Each engine is a module with its own voices
+and settings, configurable on the extension's options page.
+
+| Engine | Model | Languages | Voices | Word timing |
+| --- | --- | --- | --- | --- |
+| **Kokoro** | Kokoro-82M v1.0 (timestamped ONNX export, fp32, ~325 MB), Apache-2.0 | English (US, UK) | 27 | Exact, from the model's phoneme durations |
+| **Supertonic** | Supertonic 3 (~99M parameters, ONNX fp32, ~380 MB, 44.1 kHz), Open RAIL-M | 31 languages, one model for all | 10 shipped + custom voices | From the model's text-to-speech attention (±70 ms) |
+
+Supertonic supports Arabic, Bulgarian, Croatian, Czech, Danish, Dutch, English, Estonian,
+Finnish, French, German, Greek, Hindi, Hungarian, Indonesian, Italian, Japanese, Korean,
+Latvian, Lithuanian, Polish, Portuguese, Romanian, Russian, Slovak, Slovenian, Spanish,
+Swedish, Turkish, Ukrainian and Vietnamese. Every Supertonic voice speaks every language;
+by default it follows the page's language.
+
+## Features
+
+- **Reading:** the whole page, the detected main article, or the current selection;
+  sentences, words and paragraphs are detected automatically from the page
+- **Highlighting:** the current sentence and word, in colours derived from the site's own
+  background so text stays readable
+- **Controls:** play/pause, back to paragraph start, rewind, next sentence, next
+  paragraph, and a draggable progress bar
+- **Speed:** 0.5× to 4× with a words-per-minute estimate; volume and auto-scroll
+- **Natural narration:** several sentences per request for better intonation, pauses
+  between paragraphs and after headings
+- **Voices:** voice choice per engine, voice previews, and a Voice Builder for creating
+  and exporting custom Supertonic voices
+- **Speed reading (RSVP):** an optional bar showing the current word with a fixed focus
+  letter, optionally with neighbouring words, with or without narration
+- **Appearance:** four colour themes (Mordor, Shire, Rivendell, Gondor) in light and
+  dark, and highlight colour schemes with adjustable intensity
+- **Options page:** enable engines, set engine parameters (device, language, quality,
+  request size) and manage voices
+- **Convenience:** per-tab toggle that survives reloads and navigation, keyboard shortcut
+  **Alt+Shift+N**, and the opening of a page prepared in advance so playback starts
+  instantly
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/rsvp.webp" alt="The RSVP speed-reading bar above the navigation bar, in the Gondor light theme"></td>
+    <td width="50%"><img src="docs/settings.webp" alt="The settings menu with speed-reading options and colour theme previews"></td>
+  </tr>
+  <tr>
+    <td align="center"><em>Speed reading (RSVP) in the Gondor light theme</em></td>
+    <td align="center"><em>Settings menu with theme previews</em></td>
+  </tr>
+</table>
+
+![The Narration Options page with Supertonic's Voice Builder](docs/options.webp)
+<p align="center"><em>Narration Options: Supertonic's Voice Builder</em></p>
 
 ## Build and install
 
@@ -127,5 +167,5 @@ stand-in for the `chrome.*` APIs, which is the quickest way to iterate on the UI
 ## Licence
 
 GPL-3.0-or-later. The phonemiser bundles eSpeak NG (GPL-3.0). Kokoro model weights
-and `kokoro-js` (whose text normalisation is adapted in `src/engine/phonemize.ts`)
+and `kokoro-js` (whose text normalisation is adapted in `src/engines/kokoro/phonemize.ts`)
 are Apache-2.0.
