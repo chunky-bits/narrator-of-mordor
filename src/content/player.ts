@@ -413,6 +413,7 @@ export class Player {
         this.chunkWords(this.sentences, i, end),
         this.settings.voice,
         this.settings.speed,
+        this.lang(),
       );
     }
 
@@ -504,6 +505,7 @@ export class Player {
       this.chunkWords(sentences, start, end),
       this.settings.voice,
       this.settings.speed,
+      this.lang(),
     );
     synthesis.catch(() => {
       if (this.prepared.get(key)?.synthesis === synthesis) this.prepared.delete(key);

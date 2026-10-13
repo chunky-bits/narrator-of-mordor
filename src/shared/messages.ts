@@ -26,6 +26,8 @@ export type EngineRequest =
       voice: string;
       speed: number;
       params: ParamValues;
+      /** BCP 47 language of the text (the page's), for multilingual engines. */
+      lang: string;
     }
   | { target: 'offscreen'; type: 'cancel'; session: string }
   | { target: 'offscreen'; type: 'status' };

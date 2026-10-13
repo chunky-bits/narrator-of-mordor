@@ -1,6 +1,6 @@
 import type { EngineConfigs } from '../engines/config';
 import { parseVoiceKey } from '../engines/registry';
-import type { ChunkingHint } from '../engines/types';
+import type { ChunkingHint, ParamValues } from '../engines/types';
 import type { EngineRequest, ErrorResponse, SynthesizeResponse } from '../shared/messages';
 
 export interface Synthesis {
@@ -34,11 +34,13 @@ export class EngineClient {
     private send: EngineSend,
     /** Current engine configuration (parameters are sent with every request). */
     private configs: () => EngineConfigs,
+    /** Extra per-voice parameters, e.g. a custom voice's recipe. */
+    private voiceParams: (voice: string) => ParamValues = () => ({}),
   ) {}
 
-  async synthesize(session: string, words: string[], voice: string, speed: number): Promise<Synthesis> {
-    const params = this.configs()[parseVoiceKey(voice).engine]?.params ?? {};
-    const res = await this.send({ target: 'offscreen', type: 'synthesize', session, words, voice, speed, params });
+  async synthesize(session: string, words: string[], voice: string, speed: number, lang: string): Promise<Synthesis> {
+    const params = { ...(this.configs()[parseVoiceKey(voice).engine]?.params ?? {}), ...this.voiceParams(voice) };
+    const res = await this.send({ target: 'offscreen', type: 'synthesize', session, words, voice, speed, params, lang });
     if (!res.ok) throw Object.assign(new Error(res.error), { cancelled: res.cancelled ?? false });
     const pcm = decodePcm(res.pcm);
     return {

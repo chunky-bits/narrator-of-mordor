@@ -45,7 +45,7 @@ export class EngineHost {
           const { engine: engineId, voice } = parseVoiceKey(req.voice);
           const engine = await this.instance(engineId, req.params);
           const t0 = performance.now();
-          const r = await engine.synthesize(req.words, voice, req.speed, req.params);
+          const r = await engine.synthesize(req.words, voice, req.speed, req.params, req.lang);
           const seconds = r.audio.length / r.sampleRate;
           console.debug(
             `[narmor] ${seconds.toFixed(1)}s of speech in ${((performance.now() - t0) / 1000).toFixed(2)}s (${engineId}, ${engine.status})`,

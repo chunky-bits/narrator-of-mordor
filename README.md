@@ -1,7 +1,10 @@
 # Narrator of Mordor
 
-A Chrome extension that reads web pages aloud with **Kokoro**, a high-quality
-open-weight TTS model that runs entirely on your machine — no cloud, no API keys.
+A Chrome extension that reads web pages aloud with local, open-weight TTS models that
+run entirely on your machine — no cloud, no API keys:
+
+- **Kokoro** — high-quality English (US/UK) voices with exact word timing
+- **Supertonic 3** — natural voices in 31 languages including Dutch, one model for all
 
 - Bottom bar with play/pause, a settings menu (gear) and transport controls:
   - Back: start of the paragraph, or the previous paragraph within its first 2 s
@@ -25,7 +28,8 @@ open-weight TTS model that runs entirely on your machine — no cloud, no API ke
 
 ```bash
 npm install
-npm run assets   # downloads the Kokoro model (~340 MB) into public/models
+npm run assets   # downloads Kokoro (~340 MB) and Supertonic (~380 MB) into public/models
+                 # (patching Supertonic for word timing needs Python with `pip install onnx`)
 npm run build    # outputs the unpacked extension to dist/
 ```
 
@@ -39,7 +43,7 @@ the bar on a page. The shortcut can be changed at `chrome://extensions/shortcuts
 | --- | --- | --- |
 | Service worker | `src/background/background.ts` | Per-tab on/off state, toolbar/shortcut, offscreen lifetime |
 | Offscreen document | `src/offscreen/`, `src/engines/host.ts` | Runs the TTS engine modules |
-| Engine modules | `src/engines/` | One folder per engine (Kokoro so far), see below |
+| Engine modules | `src/engines/` | One folder per engine (Kokoro, Supertonic), see below |
 | Options page | `options.html`, `src/options/` | Engine settings: enable, parameters, voice previews |
 | Content script | `src/content/` | Bar UI, text extraction, playback, highlighting |
 
@@ -80,6 +84,24 @@ one ends. A chunk plays as one continuous audio source; the current sentence is 
 from the word timings, so seeking within a generated chunk is instant. Paragraph ends
 get a 0.4 s pause and headings 0.6 s. When the bar opens, the first two chunks of the
 page are prepared in the background.
+
+**Supertonic word timing.** Supertonic predicts one duration per request, not per
+character, so its timing comes from the model's text-to-speech cross-attention instead:
+`scripts/patch-supertonic.py` exposes two attention maps of the vector estimator, a
+monotonic path through them gives each character's time (resolution ~70 ms per latent
+frame), word starts falling inside a pause are moved to the end of the pause, and words
+squashed together after a silence are spread by length. Its language follows the page
+(`<html lang>`) by default.
+
+**Voice Builder.** Supertonic voices are style parameter sets for one shared model
+(character: 50×256 values, rhythm: 8×16). The options page has a Voice Builder in which
+custom voices are recipes built from the 10 shipped voices: a mix of them plus offsets
+along their 9 principal directions, separately for character and rhythm
+(`src/engines/supertonic/voices.ts`). Shipped voices are read-only; custom voices can be
+created at random, copied, renamed, randomised, deleted, previewed and used. "Copy
+recipe" puts a compact recipe on the clipboard; "Download" saves a full voice file in
+Supertonic's `voice_styles` format with the recipe in its metadata. Recipes are stored in
+`chrome.storage.sync` and sent with each synthesis request.
 
 **Highlighting** uses the CSS Custom Highlight API, so the page's DOM is never
 modified. Colours are derived from the composited background behind the text:

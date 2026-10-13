@@ -99,7 +99,8 @@ export interface EngineContext {
 export interface EngineInstance {
   /** Human-readable runtime description, e.g. "WebGPU (fp32)". */
   readonly status: string;
-  synthesize(words: string[], voice: string, speed: number, params: ParamValues): Promise<SynthesisOutput>;
+  /** `lang`: BCP 47 language of the text (the page's), for multilingual engines. */
+  synthesize(words: string[], voice: string, speed: number, params: ParamValues, lang: string): Promise<SynthesisOutput>;
   chunking(params: ParamValues): ChunkingHint;
 }
 

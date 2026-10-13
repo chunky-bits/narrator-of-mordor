@@ -14,7 +14,8 @@ import {
 } from '../shared/themes';
 import { makePalette, pageIsDark, type RGB } from './color';
 import type { EngineConfigs } from '../engines/config';
-import { ENGINES, voiceKey } from '../engines/registry';
+import { ENGINES, languageLabel, voiceKey } from '../engines/registry';
+import type { CustomVoice } from '../engines/supertonic/voices';
 import type { PlayerState } from './player';
 
 export const BAR_HEIGHT = 56;
@@ -292,6 +293,7 @@ export class Bar {
   private scrubTimer = 0;
   private settings: Settings;
   private engines: EngineConfigs = {};
+  private customVoices: CustomVoice[] = [];
   private errorTimer = 0;
   private stateText = 'Ready';
 
@@ -493,6 +495,12 @@ export class Bar {
     }, 5000);
   }
 
+  /** Custom Supertonic voices (Voice Builder) for the voice menu. */
+  setCustomVoices(voices: CustomVoice[]): void {
+    this.customVoices = voices;
+    this.renderPanel();
+  }
+
   /** Engine configuration changed: the voice list shows only enabled engines. */
   setEngines(engines: EngineConfigs): void {
     this.engines = engines;
@@ -614,12 +622,11 @@ export class Bar {
         <button class="switch" id="nm-${key}" type="button" role="switch" data-key="${key}" aria-checked="${s[key]}"></button>
       </div>`;
     // Voices of the enabled engines, grouped by language and engine.
-    const languageName = new Intl.DisplayNames(['en'], { type: 'language' });
     const groups = ENGINES.filter((e) => this.engines[e.id]?.enabled !== false)
       .flatMap((engine) =>
         [...new Set(engine.voices.map((v) => v.lang))].map(
           (lang) =>
-            `<optgroup label="${languageName.of(lang) ?? lang} — ${engine.name}">` +
+            `<optgroup label="${languageLabel(lang)} — ${engine.name}">` +
             engine.voices
               .filter((v) => v.lang === lang)
               .map((v) => {
@@ -631,6 +638,15 @@ export class Bar {
         ),
       )
       .join('');
+    const custom =
+      this.engines.supertonic?.enabled !== false && this.customVoices.length
+        ? `<optgroup label="Custom voices — Supertonic">${this.customVoices
+            .map((v) => {
+              const key = voiceKey('supertonic', v.id);
+              return `<option value="${key}" ${key === s.voice ? 'selected' : ''}>${v.name.replace(/[<&"]/g, '')}</option>`;
+            })
+            .join('')}</optgroup>`
+        : '';
 
     this.panel.innerHTML = `
       <div class="section">Highlighting</div>
@@ -642,7 +658,7 @@ export class Bar {
       <div class="section">Voice</div>
       <div class="row stack">
         <label for="nm-voice">Voice</label>
-        <select id="nm-voice">${groups}</select>
+        <select id="nm-voice">${groups}${custom}</select>
       </div>
       <div class="row">
         <span class="hint">Engines, devices and request sizes</span>

@@ -38,6 +38,6 @@ const send = (req: EngineRequest) =>
   host.handle(req.type === 'synthesize' ? { ...req, params: { ...req.params, ...forced } } : req);
 // Hook for audio-quality capture scripts.
 (window as unknown as { narmorSynth: unknown }).narmorSynth = (words: string[], voice = 'kokoro:af_heart') =>
-  send({ target: 'offscreen', type: 'synthesize', session: 'capture', words, voice, speed: 1, params: { ...forced } });
+  send({ target: 'offscreen', type: 'synthesize', session: 'capture', words, voice, speed: 1, params: { ...forced }, lang: 'en' });
 const { init } = await import('../src/content/main');
 init(send as Parameters<typeof init>[0]);

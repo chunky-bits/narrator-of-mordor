@@ -1,9 +1,10 @@
 // The list of available TTS engine modules. To add an engine: create
 // src/engines/<id>/meta.ts and engine.ts, then register both halves here.
 import { kokoroMeta } from './kokoro/meta';
+import { supertonicMeta } from './supertonic/meta';
 import type { EngineImpl, EngineMeta, VoiceInfo } from './types';
 
-export const ENGINES: EngineMeta[] = [kokoroMeta];
+export const ENGINES: EngineMeta[] = [kokoroMeta, supertonicMeta];
 
 /**
  * Implementations, loaded on demand (dynamic import keeps them — and their model
@@ -11,7 +12,14 @@ export const ENGINES: EngineMeta[] = [kokoroMeta];
  */
 export const ENGINE_LOADERS: Record<string, () => Promise<EngineImpl>> = {
   kokoro: async () => (await import('./kokoro/engine')).kokoroImpl,
+  supertonic: async () => (await import('./supertonic/engine')).supertonicImpl,
 };
+
+/** Display name of a voice language; "mul" marks voices that speak every language. */
+export function languageLabel(lang: string): string {
+  if (lang === 'mul') return 'Any language';
+  return new Intl.DisplayNames(['en'], { type: 'language' }).of(lang) ?? lang;
+}
 
 export function engineMeta(id: string): EngineMeta | undefined {
   return ENGINES.find((e) => e.id === id);
