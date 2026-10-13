@@ -70,6 +70,8 @@ by default it follows the page's language.
 ## Build and install
 
 ```bash
+git clone https://github.com/chunky-bits/narrator-of-mordor.git
+cd narrator-of-mordor
 npm install
 npm run assets   # downloads Kokoro (~340 MB) and Supertonic (~380 MB) into public/models
                  # (patching Supertonic for word timing needs Python with `pip install onnx`)

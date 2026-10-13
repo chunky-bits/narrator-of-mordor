@@ -1,7 +1,7 @@
 {
   "name": "narrator-of-mordor",
   "version": "0.1.0",
-  "description": "Narrator of Mordor — read web pages aloud with Kokoro TTS",
+  "description": "Narrator of Mordor — read web pages aloud with local TTS (Kokoro, Supertonic)",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "assets": "node scripts/fetch-model.mjs",
@@ -23,5 +23,13 @@
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chunky-bits/narrator-of-mordor.git"
+  },
+  "homepage": "https://github.com/chunky-bits/narrator-of-mordor#readme",
+  "bugs": {
+    "url": "https://github.com/chunky-bits/narrator-of-mordor/issues"
   }
 }
