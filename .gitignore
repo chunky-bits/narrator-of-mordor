@@ -4,3 +4,4 @@ public/models/
 *.wav
 .DS_Store
 samples/
+release/

@@ -1,6 +1,6 @@
-// Downloads the Kokoro model files that ship inside the extension package.
-// Chrome extensions may not load code or models from remote hosts, so everything
-// lives under public/models and is copied into dist/ by Vite.
+// Downloads the model files into public/models. Development builds bundle them (Vite
+// copies them into dist/); store builds leave them out and download them on first use
+// from a GitHub release (scripts/release-models.mjs, src/engines/model-store.ts).
 import { execFileSync } from 'node:child_process';
 import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';

@@ -45,12 +45,8 @@ async function soundsHealthy(engine: KokoroEngine): Promise<boolean> {
 
 export const kokoroImpl: EngineImpl = {
   async load(params, ctx): Promise<EngineInstance> {
-    const readFile = async (p: string) => {
-      const res = await fetch(ctx.modelRoot + 'kokoro/' + p);
-      if (!res.ok) throw new Error(`${p}: HTTP ${res.status}`);
-      return res.arrayBuffer();
-    };
-    const base = { modelRoot: ctx.modelRoot, modelId: 'kokoro', readFile, wasmPaths: ctx.wasmPaths };
+    const readFile = async (p: string) => (await ctx.files.response(p)).arrayBuffer();
+    const base = { modelRoot: ctx.modelRoot, modelId: 'kokoro', readFile, files: ctx.files, wasmPaths: ctx.wasmPaths };
     // fp32 everywhere: Kokoro's fp16 export runs on WebGPU but produces heavily degraded
     // ("bitcrushed") audio there. `dtype` is a hidden dev override for quality tests.
     const dtype = params.dtype === 'fp16' ? 'fp16' : 'fp32';

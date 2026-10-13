@@ -3,7 +3,8 @@
 // reloaded when one of their load-time parameters (EngineMeta.reloadParams) changes.
 import type { EngineRequest, ErrorResponse, StatusResponse, SynthesizeResponse } from '../shared/messages';
 import { ENGINE_LOADERS, engineMeta, parseVoiceKey } from './registry';
-import type { EngineContext, EngineInstance, ParamValues } from './types';
+import { downloadStatus, ModelStore } from './model-store';
+import type { EngineInstance, HostContext, ParamValues } from './types';
 
 interface Job {
   session: string;
@@ -22,8 +23,11 @@ export class EngineHost {
   private statuses = new Map<string, string>();
   private queue: Job[] = [];
   private busy = false;
+  private store: ModelStore;
 
-  constructor(private ctx: EngineContext) {}
+  constructor(private ctx: HostContext) {
+    this.store = new ModelStore(ctx.modelRoot);
+  }
 
   handle(req: EngineRequest): Promise<SynthesizeResponse | StatusResponse | ErrorResponse> {
     if (req.type === 'status') {
@@ -87,8 +91,14 @@ export class EngineHost {
     if (current && current.signature === signature) return current.instance;
 
     this.statuses.set(engineId, 'Loading…');
+    const files = this.store.forEngine(engineId, (loaded, total) => {
+      this.statuses.set(engineId, loaded < total ? downloadStatus(loaded, total) : 'Loading…');
+    });
     const instance = load()
-      .then((impl) => impl.load(params, this.ctx))
+      .then(async (impl) => {
+        await files.ensureAll(); // first use: download everything with one progress
+        return impl.load(params, { ...this.ctx, files });
+      })
       .then((inst) => {
         this.statuses.set(engineId, inst.status);
         return inst;

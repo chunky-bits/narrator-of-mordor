@@ -523,6 +523,10 @@ export class Bar {
     if (this.host.dataset.mode !== before) this.renderPanel();
   };
 
+  state(): PlayerState {
+    return (this.host.dataset.state as PlayerState | undefined) ?? 'idle';
+  }
+
   setState(state: PlayerState, detail?: string): void {
     this.host.dataset.state = state;
     const playing = state === 'playing' || state === 'loading';

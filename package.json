@@ -1,7 +1,7 @@
 {
   "name": "narrator-of-mordor",
   "version": "0.1.0",
-  "description": "Narrator of Mordor — read web pages aloud with local TTS (Kokoro, Supertonic)",
+  "description": "Narrator of Mordor \u2014 read web pages aloud with local TTS (Kokoro, Supertonic)",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "assets": "node scripts/fetch-model.mjs",
@@ -9,7 +9,9 @@
     "dev": "vite",
     "typecheck": "tsc --noEmit",
     "icons": "python3 scripts/make-icons.py",
-    "test:engine": "tsx scripts/test-engine.ts"
+    "test:engine": "tsx scripts/test-engine.ts",
+    "package": "npm run build && node scripts/package.mjs",
+    "release:models": "node scripts/release-models.mjs"
   },
   "license": "GPL-3.0-or-later",
   "type": "module",

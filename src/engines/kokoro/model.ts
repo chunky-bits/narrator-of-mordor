@@ -21,6 +21,11 @@ export interface EngineOptions {
   dtype: 'fp32' | 'fp16' | 'q8';
   /** Reads a file relative to the model folder (voices, tokenizer). */
   readFile: (relativePath: string) => Promise<ArrayBuffer>;
+  /**
+   * Serves the model folder's files to transformers.js instead of fetching them from
+   * modelRoot (the extension's downloaded and cached models).
+   */
+  files?: { response(relativePath: string): Promise<Response> };
   /** Where onnxruntime-web finds its .wasm/.mjs files (browser only). */
   wasmPaths?: string | { wasm: string };
 }
@@ -66,6 +71,16 @@ export class KokoroEngine {
     env.allowLocalModels = true;
     env.useBrowserCache = false;
     env.localModelPath = opts.modelRoot;
+    const files = opts.files;
+    const folder = `${opts.modelRoot}${opts.modelId}/`;
+    env.useCustomCache = Boolean(files);
+    env.customCache = files
+      ? {
+          // transformers.js looks files up by their local path (localModelPath + model id + file).
+          match: async (key: string) => (key.startsWith(folder) ? files.response(key.slice(folder.length)) : undefined),
+          put: async () => {},
+        }
+      : null;
     if (opts.wasmPaths && env.backends.onnx.wasm) env.backends.onnx.wasm.wasmPaths = opts.wasmPaths as string;
 
     const engine = new KokoroEngine(opts);

@@ -81,8 +81,26 @@ npm run build    # outputs the unpacked extension to dist/
 ```
 
 Then open `chrome://extensions`, enable **Developer mode**, click **Load unpacked**
-and choose the `dist/` folder. Click the toolbar icon (or press Alt+Shift+N) to show
+and choose the `dist/` folder. This development build includes the models. Click the toolbar icon (or press Alt+Shift+N) to show
 the bar on a page. The shortcut can be changed at `chrome://extensions/shortcuts`.
+
+## Releases
+
+The Chrome Web Store package leaves the models out (about 6 MB instead of 730 MB). Each
+engine's files are downloaded the first time it is used, with progress in the bar,
+checked against their SHA-256 and kept in the browser's Cache API
+(`src/engines/model-store.ts`). They come from the
+[`models-v1`](https://github.com/chunky-bits/narrator-of-mordor/releases/tag/models-v1)
+release of this repository.
+
+```bash
+npm run release:models -- --upload  # hash public/models into src/engines/model-files.json and upload the release assets (needs gh)
+npm run package                     # build and zip dist/ without models into release/
+```
+
+A changed model file needs a new release tag (`TAG` in `scripts/release-models.mjs`):
+the extension caches files per tag and removes older ones. To test a package against
+another location, build with `VITE_MODELS_URL=<url ending in />`.
 
 ## How it works
 

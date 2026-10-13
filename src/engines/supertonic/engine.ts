@@ -231,12 +231,7 @@ export const supertonicImpl: EngineImpl = {
   async load(params, ctx): Promise<EngineInstance> {
     ort.env.wasm.wasmPaths = ctx.wasmPaths;
     ort.env.logLevel = 'error';
-    const root = ctx.modelRoot + 'supertonic/';
-    const getJson = async <T>(p: string): Promise<T> => {
-      const res = await fetch(root + p);
-      if (!res.ok) throw new Error(`${p}: HTTP ${res.status}`);
-      return res.json() as Promise<T>;
-    };
+    const getJson = <T>(p: string): Promise<T> => ctx.files.json<T>(p);
     const [cfg, indexer] = await Promise.all([getJson<Config>('onnx/tts.json'), getJson<number[]>('onnx/unicode_indexer.json')]);
     const sr = cfg.ae.sample_rate;
     const chunk = cfg.ae.base_chunk_size * cfg.ttl.chunk_compress_factor;
@@ -244,8 +239,8 @@ export const supertonicImpl: EngineImpl = {
 
     const createSessions = (device: 'webgpu' | 'wasm') =>
       Promise.all(
-        ['duration_predictor', 'text_encoder', 'vector_estimator.timed', 'vocoder'].map((f) =>
-          ort.InferenceSession.create(`${root}onnx/${f}.onnx`, { executionProviders: [device], logSeverityLevel: 3 }),
+        ['duration_predictor', 'text_encoder', 'vector_estimator.timed', 'vocoder'].map(async (f) =>
+          ort.InferenceSession.create(await ctx.files.bytes(`onnx/${f}.onnx`), { executionProviders: [device], logSeverityLevel: 3 }),
         ),
       );
 

@@ -1,6 +1,6 @@
 // Content script entry: shows/hides the bar for this tab and wires it to the player.
 import { loadEngineConfigs, onEngineConfigsChanged, type EngineConfigs } from '../engines/config';
-import { ENGINES, findVoice, voiceKey } from '../engines/registry';
+import { ENGINES, findVoice, parseVoiceKey, voiceKey } from '../engines/registry';
 import {
   customVoiceParams,
   loadCustomVoices,
@@ -40,6 +40,17 @@ export function init(send: EngineSend = chromeEngineSend): void {
     } catch {
       return {}; // no offscreen document
     }
+  };
+
+  /** While speech is being prepared, show the voice model's first-use download in the bar. */
+  let downloadTimer = 0;
+  const watchDownload = (loading: boolean) => {
+    clearInterval(downloadTimer);
+    if (!loading) return;
+    downloadTimer = window.setInterval(async () => {
+      const status = (await engineStatus())[parseVoiceKey(settings.voice).engine];
+      if (status?.startsWith('Downloading') && narrator?.bar.state() === 'loading') narrator.bar.setState('loading', status);
+    }, 1000);
   };
 
   const openFeedback = async (kind: FeedbackKind, includePageUrl: boolean) => {
@@ -87,7 +98,10 @@ export function init(send: EngineSend = chromeEngineSend): void {
       new EngineClient(send, () => engines, (voice) => customVoiceParams(customVoices, voice)),
       settings,
       {
-        onState: (state, detail) => bar.setState(state, detail),
+        onState: (state, detail) => {
+          bar.setState(state, detail);
+          watchDownload(state === 'loading');
+        },
         onProgress: (i, total) => bar.setProgress(i, total),
         onPosition: (fraction) => bar.setPosition(fraction),
         onError: (message) => {
@@ -106,6 +120,7 @@ export function init(send: EngineSend = chromeEngineSend): void {
 
   const hide = () => {
     if (!narrator) return;
+    clearInterval(downloadTimer);
     narrator.player.dispose();
     narrator.bar.unmount();
     narrator = null;

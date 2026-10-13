@@ -7,6 +7,7 @@
 //    lazily, when a voice of that engine is used (see registry.ts).
 
 /** A configurable engine parameter; the options page renders a form field from it. */
+import type { ModelFiles } from './model-store';
 export type ParamSpec =
   | {
       key: string;
@@ -88,11 +89,16 @@ export interface SynthesisOutput {
   words: WordTiming[];
 }
 
-export interface EngineContext {
-  /** URL of the folder holding the bundled models, with trailing slash. */
+export interface HostContext {
+  /** URL of the folder where development builds bundle the models, with trailing slash. */
   modelRoot: string;
   /** onnxruntime-web WASM location. */
   wasmPaths: string | { wasm: string };
+}
+
+export interface EngineContext extends HostContext {
+  /** The engine's model files: bundled, cached or downloaded on first use. */
+  files: ModelFiles;
 }
 
 /** A loaded engine, ready to synthesise. */
