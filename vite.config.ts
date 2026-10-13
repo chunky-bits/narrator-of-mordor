@@ -1,5 +1,19 @@
+import { execSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
+
+/** Build identifier for feedback diagnostics: commit, uncommitted changes and date. */
+function buildId(): string {
+  const date = new Date().toISOString().slice(0, 10);
+  try {
+    const git = (cmd: string) => execSync(`git ${cmd}`, { cwd: import.meta.dirname, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    const dirty = git('status --porcelain') ? '-dirty' : '';
+    return `${git('rev-parse --short HEAD')}${dirty} (${date})`;
+  } catch {
+    return `unknown commit (${date})`; // not built from a git checkout
+  }
+}
+const define = { __BUILD__: JSON.stringify(buildId()) };
 
 // Two builds share dist/:
 //  - default: background service worker + offscreen document (ES modules)
@@ -8,6 +22,7 @@ import { defineConfig } from 'vite';
 export default defineConfig(({ mode }) => {
   if (mode === 'content') {
     return {
+      define,
       publicDir: false,
       build: {
         outDir: 'dist',
@@ -23,6 +38,7 @@ export default defineConfig(({ mode }) => {
     };
   }
   return {
+    define,
     // The dev harness (harness/index.html) runs everything in one page.
     server: {
       headers: {

@@ -48,7 +48,7 @@ export interface DiagnosticsInput {
 export async function diagnostics({ settings: s, engineStatus, pageLang, lastError }: DiagnosticsInput): Promise<string> {
   const engines = Object.entries(engineStatus).map(([k, v]) => `${k}: ${v}`).join('; ') || 'not loaded';
   return [
-    `Extension: ${chrome.runtime.getManifest().version}`,
+    `Extension: ${chrome.runtime.getManifest().version}, build ${__BUILD__}`,
     `Browser: ${await browserInfo()}`,
     `Engines: ${engines}`,
     `Voice: ${s.voice} · speed ${s.speed}×${pageLang ? ` · page language ${pageLang}` : ''}`,
