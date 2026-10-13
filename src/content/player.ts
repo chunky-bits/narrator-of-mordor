@@ -23,6 +23,8 @@ export interface PlayerEvents {
   onError(message: string): void;
   /** Calibrated speaking rate of the current voice at 1×, in words per minute. */
   onWordRate(wpm: number): void;
+  /** Current word for the RSVP bar, with its neighbours (null where there is none). */
+  onWord(prev: string | null, word: string | null, next: string | null): void;
 }
 
 /**
@@ -258,7 +260,7 @@ export class Player {
   updateSettings(next: Settings): void {
     const prev = this.settings;
     this.settings = next;
-    if (this.gain) this.gain.gain.value = next.volume;
+    if (this.gain) this.gain.gain.value = this.outputVolume();
     this.highlighter.configure(activeScheme(next), next.highlightIntensity);
     const voiceChanged = next.voice !== prev.voice || next.speed !== prev.speed;
     if (next.voice !== prev.voice) this.rate = { words: 0, seconds: 0 };
@@ -281,6 +283,36 @@ export class Player {
   }
 
   // ---------------------------------------------------------------------------
+
+  /** Volume to play at: silent while the RSVP bar is shown with "Mute narration" on. */
+  private outputVolume(): number {
+    return this.settings.rsvp && this.settings.rsvpMute ? 0 : this.settings.volume;
+  }
+
+  /** Text of the word `offset` words away from word w of sentence i (across sentences). */
+  private wordText(i: number, w: number, offset: number): string | null {
+    let si = i;
+    let wi = w + offset;
+    while (wi < 0) {
+      if (--si < 0) return null;
+      wi += this.sentences[si].words.length;
+    }
+    while (wi >= this.sentences[si].words.length) {
+      wi -= this.sentences[si].words.length;
+      if (++si >= this.sentences.length) return null;
+    }
+    return this.sentences[si].words[wi].text;
+  }
+
+  private rsvpAt = '';
+  /** Tell the RSVP bar about word w of sentence i (before the first word: show the first). */
+  private emitWord(i: number, w: number): void {
+    const word = Math.max(0, w);
+    const key = `${i}:${word}`;
+    if (key === this.rsvpAt) return;
+    this.rsvpAt = key;
+    this.events.onWord(this.wordText(i, word, -1), this.wordText(i, word, 0), this.wordText(i, word, 1));
+  }
 
   /** Update the calibrated speaking rate (words per minute at 1×). */
   private recordRate(words: number, secondsAtNormalSpeed: number): void {
@@ -305,7 +337,7 @@ export class Player {
     if (!this.ctx) {
       this.ctx = new AudioContext();
       this.gain = this.ctx.createGain();
-      this.gain.gain.value = this.settings.volume;
+      this.gain.gain.value = this.outputVolume();
       this.gain.connect(this.ctx.destination);
     }
     void this.ctx.resume();
@@ -578,6 +610,7 @@ export class Player {
   /** Move the position marker (progress, highlight, scroll) to sentence i. */
   private showSentence(i: number): void {
     this.index = i;
+    this.emitWord(i, 0);
     this.events.onProgress(i, this.sentences.length);
     this.events.onPosition(this.charOffsets[i] / Math.max(this.totalChars, 1));
     const sentence = this.sentences[i];
@@ -699,6 +732,8 @@ export class Player {
     const chars = sentenceChars(this.sentences[this.index]);
     this.events.onPosition((this.charOffsets[this.index] + chars * through) / Math.max(this.totalChars, 1));
 
+    this.emitWord(this.index, w);
+
     if (this.settings.wordHighlight && w !== this.currentWord) {
       this.currentWord = w;
       const span = w >= 0 ? this.sentences[this.index].words[w].highlight : null;
@@ -747,6 +782,10 @@ export class Player {
 
   private setState(state: PlayerState, detail?: string): void {
     this.state = state;
+    if (state === 'idle') {
+      this.rsvpAt = '';
+      this.events.onWord(null, null, null);
+    }
     const reading = this.fromSelection ? 'Reading selection' : 'Reading page';
     this.events.onState(state, detail ?? (state === 'playing' ? reading : undefined));
   }

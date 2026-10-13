@@ -22,6 +22,9 @@ run entirely on your machine — no cloud, no API keys:
   and dark, following a fixed mode, the system or the page; highlight colour schemes
   (Classic, Ember, Forest, Mono — matching the theme by default) with three intensities,
   all with live previews in the settings menu
+- Speed reading (RSVP): a bar above the navigation bar shows the current word with its
+  focus letter fixed at the centre (and optionally the neighbouring words), in sync with
+  the voice; narration can be muted while it is shown; three text sizes
 - Per-tab toggle that survives reloads and navigation; shortcut **Alt+Shift+N**
 
 ## Build and install

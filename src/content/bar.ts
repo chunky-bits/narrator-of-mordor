@@ -36,6 +36,7 @@ export interface BarCallbacks {
 }
 
 const ICONS = {
+  rsvp: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3.5v3.5M12 17v3.5"/><rect x="2.5" y="8.5" width="19" height="7" rx="2"/><path d="M6.5 12h3M14.5 12h3"/></svg>',
   back: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5.5" width="2.4" height="13" rx="1"/><path d="M19 6.6v10.8a1 1 0 0 1-1.55.83L9.6 12.83a1 1 0 0 1 0-1.66l7.85-5.4A1 1 0 0 1 19 6.6z"/></svg>',
   rewind: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.5 7.1v9.8a.9.9 0 0 1-1.42.74L3.7 12.74a.9.9 0 0 1 0-1.48l6.38-4.9a.9.9 0 0 1 1.42.74z"/><path d="M20.5 7.1v9.8a.9.9 0 0 1-1.42.74l-6.38-4.9a.9.9 0 0 1 0-1.48l6.38-4.9a.9.9 0 0 1 1.42.74z"/></svg>',
   skip: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="16.6" y="5.5" width="2.4" height="13" rx="1"/><path d="M5 6.6v10.8a1 1 0 0 0 1.55.83l7.85-5.4a1 1 0 0 0 0-1.66l-7.85-5.4A1 1 0 0 0 5 6.6z"/></svg>',
@@ -89,6 +90,43 @@ button { font: inherit; color: inherit; }
   box-shadow: 0 -8px 24px var(--shadow);
 }
 .bar { --p: 0; }
+.bar-stack { position: relative; }
+
+/* RSVP: the current word with its focus letter fixed at the centre. */
+.rsvp {
+  --rsvp-font: 30px; --rsvp-height: 60px; --nb-opacity: .35;
+  position: relative; height: var(--rsvp-height);
+  display: flex; align-items: center;
+  background: linear-gradient(180deg, var(--bg-raised), var(--bg-top));
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -8px 24px var(--shadow);
+  overflow: hidden;
+}
+.rsvp[hidden] { display: none; }
+.rsvp[data-size="s"] { --rsvp-font: 22px; --rsvp-height: 48px; }
+.rsvp[data-size="l"] { --rsvp-font: 40px; --rsvp-height: 76px; }
+.rsvp-line {
+  width: 100%; display: grid; grid-template-columns: 1fr auto 1fr; align-items: baseline;
+  font: 500 var(--rsvp-font)/1.2 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  letter-spacing: .01em; color: var(--text); white-space: nowrap;
+}
+.rsvp-left, .rsvp-right { overflow: hidden; min-width: 0; }
+.rsvp-left { text-align: right; -webkit-mask-image: linear-gradient(90deg, transparent, #000 35%); mask-image: linear-gradient(90deg, transparent, #000 35%); }
+.rsvp-right { text-align: left; -webkit-mask-image: linear-gradient(270deg, transparent, #000 35%); mask-image: linear-gradient(270deg, transparent, #000 35%); }
+.rsvp-pivot { color: var(--accent); }
+.rsvp .nb { opacity: var(--nb-opacity); }
+.rsvp .prev { margin-right: .55em; }
+.rsvp .next { margin-left: .55em; }
+.rsvp[data-neighbours="off"] .nb { display: none; }
+.rsvp .placeholder { color: var(--muted); font-size: .5em; letter-spacing: .12em; text-transform: uppercase; }
+/* Guide marks above and below the focus letter. */
+.rsvp::before, .rsvp::after {
+  content: ""; position: absolute; left: 50%; width: 2px; height: 7px; margin-left: -1px;
+  background: var(--accent); opacity: .7; border-radius: 1px;
+}
+.rsvp::before { top: 5px; }
+.rsvp::after { bottom: 5px; }
+.icon-btn[aria-pressed="true"] { color: var(--accent); border-color: var(--line); background: var(--bg-raised); }
 .progress {
   position: absolute; left: 0; top: -1px; height: 2px; width: 100%;
   background: linear-gradient(90deg, var(--accent-deep), var(--accent));
@@ -275,6 +313,20 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 }
 `;
 
+/**
+ * Split a word around its focus letter (optimal recognition point): about a third into
+ * the word by the usual speed-reading rule, ignoring leading punctuation such as quotes.
+ */
+function splitFocus(word: string): [string, string, string] {
+  const chars = [...word];
+  const letters = chars.flatMap((c, i) => (/[\p{L}\p{N}]/u.test(c) ? [i] : []));
+  if (!letters.length) return ['', chars[0] ?? '', chars.slice(1).join('')];
+  const n = letters.length;
+  const k = n <= 1 ? 0 : n <= 5 ? 1 : n <= 9 ? 2 : n <= 13 ? 3 : 4;
+  const at = letters[Math.min(k, n - 1)];
+  return [chars.slice(0, at).join(''), chars[at], chars.slice(at + 1).join('')];
+}
+
 export class Bar {
   readonly host: HTMLElement;
   private root: ShadowRoot;
@@ -293,6 +345,10 @@ export class Bar {
   private scrubTimer = 0;
   private settings: Settings;
   private engines: EngineConfigs = {};
+  private rsvpEl!: HTMLElement;
+  private rsvpBtn!: HTMLButtonElement;
+  /** Words around the current one: [previous, current, next]. */
+  private rsvpWords: [string | null, string | null, string | null] = [null, null, null];
   /** Words per minute of the current voice at 1× (calibrated by the player). */
   private baseWpm = 150;
   private customVoices: CustomVoice[] = [];
@@ -305,6 +361,14 @@ export class Bar {
     this.root = this.host.attachShadow({ mode: 'closed' });
     this.root.innerHTML = `
       <style>${CSS}</style>
+      <div class="bar-stack">
+      <div class="rsvp" hidden aria-hidden="true">
+        <div class="rsvp-line">
+          <span class="rsvp-left"><span class="nb prev"></span><span class="pre"></span></span>
+          <span class="rsvp-pivot"></span>
+          <span class="rsvp-right"><span class="post"></span><span class="nb next"></span></span>
+        </div>
+      </div>
       <div class="bar" role="toolbar" aria-label="Narrator of Mordor">
         <div class="progress"></div>
         <div class="seek disabled"><div class="thumb"></div></div>
@@ -324,9 +388,11 @@ export class Bar {
         </div>
         <div class="right">
           <span class="count"></span>
+          <button class="icon-btn rsvp-btn" type="button" aria-label="Speed reading (RSVP)" title="Speed reading (RSVP)" aria-pressed="false">${ICONS.rsvp}</button>
           <button class="icon-btn gear" type="button" aria-label="Settings" aria-expanded="false" aria-controls="nm-panel">${ICONS.gear}</button>
         </div>
-        <div class="panel" id="nm-panel" role="dialog" aria-label="Narrator settings" hidden></div>
+      </div>
+      <div class="panel" id="nm-panel" role="dialog" aria-label="Narrator settings" hidden></div>
       </div>`;
     this.playBtn = this.root.querySelector('.play')!;
     const backBtn = this.root.querySelector<HTMLButtonElement>('.back')!;
@@ -355,6 +421,10 @@ export class Bar {
     forwardBtn.addEventListener('click', () => this.cb.onForward());
     nextBtn.addEventListener('click', () => this.cb.onSkip());
     this.gearBtn.addEventListener('click', () => this.togglePanel());
+    this.rsvpEl = this.root.querySelector('.rsvp')!;
+    this.rsvpBtn = this.root.querySelector('.rsvp-btn')!;
+    this.rsvpBtn.addEventListener('mousedown', (e) => e.preventDefault());
+    this.rsvpBtn.addEventListener('click', () => this.update({ rsvp: !this.settings.rsvp }));
 
     // Keys typed in the bar should not trigger the page's own shortcuts.
     this.host.addEventListener('keydown', (e) => {
@@ -367,6 +437,8 @@ export class Bar {
     document.addEventListener('pointerdown', this.onOutsidePointer, true);
 
     this.applyTheme();
+    this.applyRsvp();
+    this.renderRsvp();
     this.renderPanel();
   }
 
@@ -522,11 +594,52 @@ export class Bar {
     this.renderPanel();
   }
 
+  /** Total height of the bar stack (navigation bar plus RSVP bar when shown). */
+  height(): number {
+    return BAR_HEIGHT + (this.settings.rsvp ? this.rsvpEl.offsetHeight : 0);
+  }
+
+  /** Current word for the RSVP bar, with its neighbours (null where there is none). */
+  setRsvpWord(prev: string | null, word: string | null, next: string | null): void {
+    const same = this.rsvpWords[0] === prev && this.rsvpWords[1] === word && this.rsvpWords[2] === next;
+    this.rsvpWords = [prev, word, next];
+    if (!same && this.settings.rsvp) this.renderRsvp();
+  }
+
+  private applyRsvp(): void {
+    const s = this.settings;
+    this.rsvpEl.hidden = !s.rsvp;
+    this.rsvpEl.dataset.size = s.rsvpSize;
+    this.rsvpEl.dataset.neighbours = s.rsvpNeighbours ? 'on' : 'off';
+    this.rsvpEl.style.setProperty('--nb-opacity', String(s.rsvpNeighbourOpacity));
+    this.rsvpBtn.setAttribute('aria-pressed', String(s.rsvp));
+    if (s.rsvp) this.renderRsvp();
+  }
+
+  private renderRsvp(): void {
+    const [prev, word, next] = this.rsvpWords;
+    const q = (sel: string) => this.rsvpEl.querySelector<HTMLElement>(sel)!;
+    q('.prev').textContent = prev ?? '';
+    q('.next').textContent = next ?? '';
+    const pivot = q('.rsvp-pivot');
+    if (!word) {
+      q('.pre').textContent = '';
+      q('.post').textContent = '';
+      pivot.innerHTML = '<span class="placeholder">Speed reading</span>';
+      return;
+    }
+    const [pre, focus, post] = splitFocus(word);
+    q('.pre').textContent = pre;
+    pivot.textContent = focus;
+    q('.post').textContent = post;
+  }
+
   setSettings(settings: Settings): void {
     // Ignore echoes of our own changes so sliders aren't re-rendered mid-drag.
     if (JSON.stringify(settings) === JSON.stringify(this.settings)) return;
     this.settings = settings;
     this.applyTheme();
+    this.applyRsvp();
     this.renderPanel();
   }
 
@@ -547,6 +660,10 @@ export class Bar {
   private update(patch: Partial<Settings>): void {
     this.settings = { ...this.settings, ...patch };
     this.cb.onSettingsChange(this.settings);
+    if (Object.keys(patch).some((k) => k.startsWith('rsvp'))) {
+      this.applyRsvp();
+      if ('rsvpSize' in patch) this.renderPanel(); // segmented control state
+    }
     if ('theme' in patch || 'mode' in patch || 'highlightScheme' in patch || 'highlightIntensity' in patch) {
       this.applyTheme();
       this.renderPanel(); // checked states and previews
@@ -688,7 +805,21 @@ export class Bar {
         <div class="head"><label for="nm-volume">Volume</label><span class="value" data-for="volume">${Math.round(s.volume * 100)}%</span></div>
         <input id="nm-volume" type="range" min="0" max="1" step="0.01" value="${s.volume}">
       </div>
+      <div class="section">Speed reading (RSVP)</div>
+      ${sw('rsvpMute', 'Mute narration', 'Silent while the RSVP bar is shown; words keep the voice’s timing')}
+      ${sw('rsvpNeighbours', 'Show neighbouring words', 'The previous and next word beside the current one')}
+      <div class="row stack">
+        <div class="head"><label for="nm-nbopacity">Neighbouring words opacity</label><span class="value" data-for="nbopacity">${Math.round(s.rsvpNeighbourOpacity * 100)}%</span></div>
+        <input id="nm-nbopacity" type="range" min="0.05" max="1" step="0.05" value="${s.rsvpNeighbourOpacity}">
+      </div>
+      ${this.segmented<'s' | 'm' | 'l'>('rsvpSize', 'Text size', [['s', 'Small'], ['m', 'Medium'], ['l', 'Large']])}
       ${this.appearanceSection()}`;
+    const nb = this.panel.querySelector<HTMLInputElement>('#nm-nbopacity')!;
+    const nbValue = this.panel.querySelector<HTMLElement>('[data-for="nbopacity"]')!;
+    nb.addEventListener('input', () => {
+      nbValue.textContent = `${Math.round(Number(nb.value) * 100)}%`;
+      this.update({ rsvpNeighbourOpacity: Number(nb.value) });
+    });
 
     for (const card of this.panel.querySelectorAll<HTMLButtonElement>('[data-theme-id]')) {
       card.addEventListener('click', () => this.update({ theme: card.dataset.themeId as ThemeId }));

@@ -10,7 +10,7 @@ import {
 } from '../engines/supertonic/voices';
 import type { ContentMessage } from '../shared/messages';
 import { loadSettings, onSettingsChanged, saveSettings, type Settings } from '../shared/settings';
-import { Bar, BAR_HEIGHT } from './bar';
+import { Bar } from './bar';
 import { chromeEngineSend, EngineClient, type EngineSend } from './engine-client';
 import { Player } from './player';
 
@@ -73,8 +73,9 @@ export function init(send: EngineSend = chromeEngineSend): void {
         onPosition: (fraction) => bar.setPosition(fraction),
         onError: (message) => bar.showError(message),
         onWordRate: (wpm) => bar.setBaseWpm(wpm),
+        onWord: (prev, word, next) => bar.setRsvpWord(prev, word, next),
       },
-      () => BAR_HEIGHT,
+      () => bar.height(),
     );
     bar.mount();
     narrator = { bar, player };

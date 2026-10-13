@@ -18,6 +18,14 @@ export interface Settings {
   /** Highlight colour scheme; 'theme' uses the theme's matching scheme. */
   highlightScheme: SchemeId | 'theme';
   highlightIntensity: Intensity;
+  /** Speed reading: show the RSVP bar with the current word. */
+  rsvp: boolean;
+  /** Silence the voice while the RSVP bar is shown (timing still follows the voice). */
+  rsvpMute: boolean;
+  rsvpNeighbours: boolean;
+  /** Opacity of the neighbouring words, 0 – 1. */
+  rsvpNeighbourOpacity: number;
+  rsvpSize: 's' | 'm' | 'l';
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -33,6 +41,11 @@ export const DEFAULT_SETTINGS: Settings = {
   mode: 'dark',
   highlightScheme: 'theme',
   highlightIntensity: 'normal',
+  rsvp: false,
+  rsvpMute: false,
+  rsvpNeighbours: true,
+  rsvpNeighbourOpacity: 0.35,
+  rsvpSize: 'm',
 };
 
 /** The highlight scheme in effect for these settings. */
