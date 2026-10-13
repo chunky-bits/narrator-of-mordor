@@ -21,6 +21,8 @@ export interface PlayerEvents {
   /** Reading position as a fraction 0–1 (character-weighted); updated every frame. */
   onPosition(fraction: number): void;
   onError(message: string): void;
+  /** Calibrated speaking rate of the current voice at 1×, in words per minute. */
+  onWordRate(wpm: number): void;
 }
 
 /**
@@ -124,6 +126,8 @@ export class Player {
    * Progress weights: characters before each sentence (prefix sums) and in total.
    * Characters track speaking time much better than word counts do.
    */
+  /** Words and audio seconds synthesised (normalised to 1×), for the WPM estimate. */
+  private rate = { words: 0, seconds: 0 };
   private charOffsets: number[] = [];
   private totalChars = 0;
 
@@ -257,6 +261,7 @@ export class Player {
     if (this.gain) this.gain.gain.value = next.volume;
     this.highlighter.configure(activeScheme(next), next.highlightIntensity);
     const voiceChanged = next.voice !== prev.voice || next.speed !== prev.speed;
+    if (next.voice !== prev.voice) this.rate = { words: 0, seconds: 0 };
     if (voiceChanged) this.regenerate();
     if (voiceChanged || next.articleMode !== prev.articleMode) {
       this.prepare(); // what was prepared no longer matches
@@ -276,6 +281,14 @@ export class Player {
   }
 
   // ---------------------------------------------------------------------------
+
+  /** Update the calibrated speaking rate (words per minute at 1×). */
+  private recordRate(words: number, secondsAtNormalSpeed: number): void {
+    if (secondsAtNormalSpeed < 0.5) return;
+    this.rate.words += words;
+    this.rate.seconds += secondsAtNormalSpeed;
+    this.events.onWordRate((this.rate.words / this.rate.seconds) * 60);
+  }
 
   /** Drop all synthesised audio; when reading, continue from the current sentence. */
   private regenerate(): void {
@@ -347,7 +360,10 @@ export class Player {
   /** Token budget for the chunk that follows `chunk`. */
   private nextBudget(chunk: Chunk): number {
     const { maxTokens, growth } = this.chunking;
-    return Math.min(maxTokens, Math.max(MIN_GROWN_BUDGET, chunk.tokens * growth));
+    // A chunk plays `speed` times faster, leaving that much less time to generate the
+    // next one; never shrink below the current chunk, though.
+    const factor = Math.max(1, growth / Math.max(1, this.settings.speed));
+    return Math.min(maxTokens, Math.max(MIN_GROWN_BUDGET, chunk.tokens * factor));
   }
 
   /**
@@ -418,6 +434,7 @@ export class Player {
     }
 
     const counts = this.sentences.slice(i, end).map((s) => s.words.length);
+    const speedAtRequest = this.settings.speed;
     const chunk: Chunk = {
       start: i,
       end,
@@ -425,6 +442,7 @@ export class Player {
       ready: false,
       audio: synthesis.then((syn) => {
         this.chunking = syn.chunking;
+        this.recordRate(counts.reduce((a, b) => a + b, 0), syn.duration * speedAtRequest);
         const audio = splitChunk(syn, counts);
         audio.bounds.slice(0, -1).forEach((b, k) => this.durations.set(i + k, audio.bounds[k + 1] - b));
         chunk.ready = true;
@@ -591,12 +609,17 @@ export class Player {
     }
   }
 
-  /** Pause before sentence i when reached by natural progression. */
+  /** Pause before sentence i when reached by natural progression (shorter at higher speeds). */
   private pauseBefore(i: number): number {
     if (i === 0) return 0;
     const prev = this.sentences[i - 1];
-    if (prev.heading && !this.sentences[i].heading) return HEADING_PAUSE;
-    return prev.paragraph !== this.sentences[i].paragraph ? PARAGRAPH_PAUSE : 0;
+    const pause =
+      prev.heading && !this.sentences[i].heading
+        ? HEADING_PAUSE
+        : prev.paragraph !== this.sentences[i].paragraph
+          ? PARAGRAPH_PAUSE
+          : 0;
+    return pause / Math.max(0.5, this.settings.speed);
   }
 
   private async playFrom(i: number, budget: number, natural = false): Promise<void> {

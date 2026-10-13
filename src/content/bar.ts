@@ -293,6 +293,8 @@ export class Bar {
   private scrubTimer = 0;
   private settings: Settings;
   private engines: EngineConfigs = {};
+  /** Words per minute of the current voice at 1× (calibrated by the player). */
+  private baseWpm = 150;
   private customVoices: CustomVoice[] = [];
   private errorTimer = 0;
   private stateText = 'Ready';
@@ -495,6 +497,19 @@ export class Bar {
     }, 5000);
   }
 
+  /** Calibrated speaking rate of the current voice at 1×, for the WPM indication. */
+  setBaseWpm(wpm: number): void {
+    this.baseWpm = wpm;
+    const el = this.panel.querySelector<HTMLElement>('[data-wpm]');
+    const speed = this.panel.querySelector<HTMLInputElement>('#nm-speed');
+    if (el && speed) el.textContent = this.wpmText(Number(speed.value));
+  }
+
+  private wpmText(speed: number): string {
+    // Rounded to 10: it is an approximation.
+    return `≈ ${Math.round((this.baseWpm * speed) / 10) * 10} words per minute`;
+  }
+
   /** Custom Supertonic voices (Voice Builder) for the voice menu. */
   setCustomVoices(voices: CustomVoice[]): void {
     this.customVoices = voices;
@@ -666,7 +681,8 @@ export class Bar {
       </div>
       <div class="row stack">
         <div class="head"><label for="nm-speed">Speed</label><span class="value" data-for="speed">${s.speed.toFixed(2)}×</span></div>
-        <input id="nm-speed" type="range" min="0.5" max="2" step="0.05" value="${s.speed}">
+        <input id="nm-speed" type="range" min="0.5" max="4" step="0.05" value="${s.speed}" aria-describedby="nm-wpm">
+        <span class="hint" id="nm-wpm" data-wpm>${this.wpmText(s.speed)}</span>
       </div>
       <div class="row stack">
         <div class="head"><label for="nm-volume">Volume</label><span class="value" data-for="volume">${Math.round(s.volume * 100)}%</span></div>
@@ -701,7 +717,11 @@ export class Bar {
     });
     const speed = this.panel.querySelector<HTMLInputElement>('#nm-speed')!;
     const speedValue = this.panel.querySelector<HTMLElement>('[data-for="speed"]')!;
-    speed.addEventListener('input', () => (speedValue.textContent = `${Number(speed.value).toFixed(2)}×`));
+    const wpm = this.panel.querySelector<HTMLElement>('[data-wpm]')!;
+    speed.addEventListener('input', () => {
+      speedValue.textContent = `${Number(speed.value).toFixed(2)}×`;
+      wpm.textContent = this.wpmText(Number(speed.value));
+    });
     speed.addEventListener('change', () => this.update({ speed: Number(speed.value) }));
     const volume = this.panel.querySelector<HTMLInputElement>('#nm-volume')!;
     const volumeValue = this.panel.querySelector<HTMLElement>('[data-for="volume"]')!;

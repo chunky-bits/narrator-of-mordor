@@ -73,3 +73,26 @@ export function timeStretch(input: Float32Array, factor: number, sampleRate: num
   for (let i = 0; i < outLength; i++) result[i] = weight[i] > 1e-3 ? out[i] / weight[i] : 0;
   return result;
 }
+
+/**
+ * Split a requested speed into what the model does itself (within its natural range,
+ * where it speaks faster rather than dropping or squashing sounds) and the remaining
+ * time-stretch factor applied to the generated audio.
+ */
+export function splitSpeed(speed: number, range: { min: number; max: number }): { model: number; stretch: number } {
+  const model = Math.min(range.max, Math.max(range.min, speed));
+  return { model, stretch: speed / model };
+}
+
+/** Apply a time-stretch factor to audio and its word timings together. */
+export function stretchOutput<T extends { audio: Float32Array; sampleRate: number; words: { start: number; end: number }[] }>(
+  out: T,
+  factor: number,
+): T {
+  if (Math.abs(factor - 1) < 0.01) return out;
+  return {
+    ...out,
+    audio: timeStretch(out.audio, factor, out.sampleRate),
+    words: out.words.map((w) => ({ start: w.start / factor, end: w.end / factor })),
+  };
+}

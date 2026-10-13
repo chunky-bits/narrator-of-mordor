@@ -1,6 +1,14 @@
 // Kokoro module implementation (loaded in the offscreen document only).
 import type { EngineImpl, EngineInstance, ParamValues } from '../types';
+import { splitSpeed, stretchOutput } from '../stretch';
 import { KokoroEngine } from './model';
+
+/**
+ * Kokoro scales each sound's duration, but every sound has a minimum length: above ~1.5x
+ * it stops getting faster (4x yields barely 2x). Beyond this range the generated audio
+ * is time-stretched instead (pitch-preserving).
+ */
+const MODEL_SPEED = { min: 0.7, max: 1.5 };
 
 /** Each request may be this many times larger than the one playing (see player.ts). */
 const GROWTH = { webgpu: 4, wasm: 1.6 };
@@ -67,10 +75,11 @@ export const kokoroImpl: EngineImpl = {
     return {
       status,
       synthesize: async (words, voice, speed, p: ParamValues) => {
-        const r = await engine.synthesize(words, voice, speed, {
+        const { model, stretch } = splitSpeed(speed, MODEL_SPEED);
+        const r = await engine.synthesize(words, voice, model, {
           reduceFunctionWords: p.naturalFunctionWords !== false,
         });
-        return { audio: r.audio, sampleRate: r.sampleRate, words: r.words };
+        return stretchOutput({ audio: r.audio, sampleRate: r.sampleRate, words: r.words }, stretch);
       },
       chunking: (p) => ({
         maxTokens: Number(device === 'webgpu' ? p.maxTokensGpu : p.maxTokensCpu) || 250,

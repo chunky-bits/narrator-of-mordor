@@ -72,6 +72,7 @@ export function init(send: EngineSend = chromeEngineSend): void {
         onProgress: (i, total) => bar.setProgress(i, total),
         onPosition: (fraction) => bar.setPosition(fraction),
         onError: (message) => bar.showError(message),
+        onWordRate: (wpm) => bar.setBaseWpm(wpm),
       },
       () => BAR_HEIGHT,
     );

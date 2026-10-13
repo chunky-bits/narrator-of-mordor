@@ -13,7 +13,7 @@
 // each request in params.voiceRecipe and is built from the presets.
 import * as ort from 'onnxruntime-web';
 import type { EngineImpl, EngineInstance, ParamValues, SynthesisOutput, WordTiming } from '../types';
-import { timeStretch } from '../stretch';
+import { splitSpeed, stretchOutput } from '../stretch';
 import { SUPERTONIC_LANGS } from './meta';
 import { isPreset, parseStyle, PRESETS, VoiceSpace, type StyleData, type VoiceRecipe } from './voices';
 
@@ -295,8 +295,7 @@ export const supertonicImpl: EngineImpl = {
       const styleTtl = new ort.Tensor('float32', style.ttl, style.ttlDims);
       const styleDp = new ort.Tensor('float32', style.dp, style.dpDims);
 
-      const modelSpeed = Math.min(MODEL_SPEED.max, Math.max(MODEL_SPEED.min, speed));
-      const stretch = speed / modelSpeed;
+      const { model: modelSpeed, stretch } = splitSpeed(speed, MODEL_SPEED);
       const dur = ((await dpS.run({ text_ids: textIds, style_dp: styleDp, text_mask: textMask })).duration.data as Float32Array)[0] /
         (BASE_SPEED * modelSpeed);
       const emb = (await teS.run({ text_ids: textIds, style_ttl: styleTtl, text_mask: textMask })).text_emb;
@@ -330,12 +329,7 @@ export const supertonicImpl: EngineImpl = {
       const timings = withTiming
         ? alignWords(maps, T, N, spans, chunk / sr, raw, sr)
         : words.map(() => ({ start: 0, end: 0 }));
-      if (Math.abs(stretch - 1) < 0.01) return { audio: raw, sampleRate: sr, words: timings };
-      return {
-        audio: timeStretch(raw, stretch, sr),
-        sampleRate: sr,
-        words: timings.map((w) => ({ start: w.start / stretch, end: w.end / stretch })),
-      };
+      return stretchOutput({ audio: raw, sampleRate: sr, words: timings }, stretch);
     };
 
     /** Guards against GPU drivers that run the model but produce NaNs or silence. */
