@@ -1,5 +1,6 @@
 // The bottom navigation bar and its settings menu, isolated in a closed shadow root
 // so page styles cannot reach in (and ours cannot leak out).
+import type { FeedbackKind } from '../shared/feedback';
 import type { Settings } from '../shared/settings';
 import {
   SCHEMES,
@@ -33,9 +34,14 @@ export interface BarCallbacks {
   onSettingsChange(settings: Settings): void;
   /** Open the engine settings (options) page. */
   onOpenEngineSettings(): void;
+  /** Open a pre-filled GitHub issue; the page address only when the user opted in. */
+  onFeedback(kind: FeedbackKind, includePageUrl: boolean): void;
 }
 
 const ICONS = {
+  feedback: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 12.2c0 4.2-3.8 7.3-8.5 7.3-1.2 0-2.3-.2-3.3-.5L4 20.5l1.3-3.6c-1.1-1.3-1.8-2.9-1.8-4.7 0-4.2 3.8-7.4 8.5-7.4s8.5 3.2 8.5 7.4z"/><path d="M12 9v3.6M12 15.4v.1"/></svg>',
+  bug: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="8" width="10" height="12" rx="5"/><path d="M9 8.5V7a3 3 0 0 1 6 0v1.5M12 12v8M3.5 13H7M17 13h3.5M4.5 8.5 7.4 10M19.5 8.5 16.6 10M4.5 19l3-1.6M19.5 19l-3-1.6"/></svg>',
+  idea: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.7.6 1.1 1.4 1.1 2.2h5c0-.8.4-1.6 1.1-2.2A6 6 0 0 0 12 3z"/></svg>',
   rsvp: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3.5v3.5M12 17v3.5"/><rect x="2.5" y="8.5" width="19" height="7" rx="2"/><path d="M6.5 12h3M14.5 12h3"/></svg>',
   back: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5.5" width="2.4" height="13" rx="1"/><path d="M19 6.6v10.8a1 1 0 0 1-1.55.83L9.6 12.83a1 1 0 0 1 0-1.66l7.85-5.4A1 1 0 0 1 19 6.6z"/></svg>',
   rewind: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.5 7.1v9.8a.9.9 0 0 1-1.42.74L3.7 12.74a.9.9 0 0 1 0-1.48l6.38-4.9a.9.9 0 0 1 1.42.74z"/><path d="M20.5 7.1v9.8a.9.9 0 0 1-1.42.74l-6.38-4.9a.9.9 0 0 1 0-1.48l6.38-4.9a.9.9 0 0 1 1.42.74z"/></svg>',
@@ -217,7 +223,7 @@ button { font: inherit; color: inherit; }
 }
 .icon-btn:hover, .icon-btn[aria-expanded="true"] { background: var(--bg-raised); color: var(--text); border-color: var(--line); }
 .icon-btn svg { width: 19px; height: 19px; }
-.icon-btn[aria-expanded="true"] svg { transform: rotate(45deg); transition: transform .3s ease; }
+.gear[aria-expanded="true"] svg { transform: rotate(45deg); transition: transform .3s ease; }
 
 .panel {
   position: absolute; right: 12px; bottom: calc(100% + 10px);
@@ -230,7 +236,25 @@ button { font: inherit; color: inherit; }
   transform-origin: bottom right;
   animation: rise .16s ease-out;
 }
-.panel[hidden] { display: none; }
+.panel[hidden], .fb-menu[hidden] { display: none; }
+.fb-menu {
+  position: absolute; right: 12px; bottom: calc(100% + 10px);
+  width: min(300px, calc(100vw - 24px));
+  background: var(--bg-raised);
+  border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: 0 18px 48px var(--shadow);
+  padding: 6px 0 10px;
+  transform-origin: bottom right;
+  animation: rise .16s ease-out;
+}
+.fb-item {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 16px;
+  border: none; background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer;
+}
+.fb-item:hover, .fb-item:focus-visible { background: var(--bg-input); color: var(--accent); outline: none; }
+.fb-item svg { width: 18px; height: 18px; flex: none; color: var(--accent); }
+.fb-item .hint { display: block; color: var(--muted); font-size: 11.5px; }
+.fb-note { padding: 4px 16px 0; color: var(--muted); font-size: 11.5px; line-height: 1.4; }
 @keyframes rise { from { opacity: 0; transform: translateY(6px) scale(.98); } }
 .section { padding: 10px 16px 4px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); font-weight: 650; }
 .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 16px; }
@@ -334,6 +358,8 @@ export class Bar {
   private skipBtns: HTMLButtonElement[];
   private gearBtn: HTMLButtonElement;
   private panel: HTMLElement;
+  private fbBtn: HTMLButtonElement;
+  private fbMenu: HTMLElement;
   private statusEl: HTMLElement;
   private countEl: HTMLElement;
   private barEl: HTMLElement;
@@ -388,11 +414,22 @@ export class Bar {
         </div>
         <div class="right">
           <span class="count"></span>
+          <button class="icon-btn fb-btn" type="button" aria-label="Feedback" title="Report a bug or suggest a feature" aria-expanded="false" aria-controls="nm-feedback">${ICONS.feedback}</button>
           <button class="icon-btn rsvp-btn" type="button" aria-label="Speed reading (RSVP)" title="Speed reading (RSVP)" aria-pressed="false">${ICONS.rsvp}</button>
           <button class="icon-btn gear" type="button" aria-label="Settings" aria-expanded="false" aria-controls="nm-panel">${ICONS.gear}</button>
         </div>
       </div>
       <div class="panel" id="nm-panel" role="dialog" aria-label="Narrator settings" hidden></div>
+      <div class="fb-menu" id="nm-feedback" role="dialog" aria-label="Feedback" hidden>
+        <div class="section">Feedback</div>
+        <button class="fb-item" type="button" data-kind="bug">${ICONS.bug}<span>Report a bug<span class="hint">Something doesn't work as it should</span></span></button>
+        <button class="fb-item" type="button" data-kind="idea">${ICONS.idea}<span>Suggest a feature<span class="hint">An idea or improvement</span></span></button>
+        <div class="row">
+          <label id="nm-fb-url-label" for="nm-fb-url">Include this page's address<span class="hint">Helps when a page reads wrongly</span></label>
+          <button class="switch" id="nm-fb-url" type="button" role="switch" aria-checked="false" aria-labelledby="nm-fb-url-label"></button>
+        </div>
+        <p class="fb-note">Opens a pre-filled issue on GitHub with technical details (versions, engine, settings — no page content). You can review it before submitting; a GitHub account is needed.</p>
+      </div>
       </div>`;
     this.playBtn = this.root.querySelector('.play')!;
     const backBtn = this.root.querySelector<HTMLButtonElement>('.back')!;
@@ -402,6 +439,8 @@ export class Bar {
     this.skipBtns = [backBtn, rewindBtn, forwardBtn, nextBtn];
     this.gearBtn = this.root.querySelector('.gear')!;
     this.panel = this.root.querySelector('.panel')!;
+    this.fbBtn = this.root.querySelector('.fb-btn')!;
+    this.fbMenu = this.root.querySelector('.fb-menu')!;
     this.statusEl = this.root.querySelector('.status')!;
     this.countEl = this.root.querySelector('.count')!;
     this.barEl = this.root.querySelector('.bar')!;
@@ -412,7 +451,7 @@ export class Bar {
     this.initSeek();
 
     // Keep the page's text selection when pressing the bar buttons.
-    for (const btn of [this.playBtn, this.gearBtn, ...this.skipBtns]) {
+    for (const btn of [this.playBtn, this.gearBtn, this.fbBtn, ...this.skipBtns]) {
       btn.addEventListener('mousedown', (e) => e.preventDefault());
     }
     this.playBtn.addEventListener('click', () => this.cb.onPlayPause());
@@ -421,6 +460,7 @@ export class Bar {
     forwardBtn.addEventListener('click', () => this.cb.onForward());
     nextBtn.addEventListener('click', () => this.cb.onSkip());
     this.gearBtn.addEventListener('click', () => this.togglePanel());
+    this.initFeedback();
     this.rsvpEl = this.root.querySelector('.rsvp')!;
     this.rsvpBtn = this.root.querySelector('.rsvp-btn')!;
     this.rsvpBtn.addEventListener('mousedown', (e) => e.preventDefault());
@@ -431,6 +471,9 @@ export class Bar {
       if (e.key === 'Escape' && !this.panel.hidden) {
         this.togglePanel(false);
         this.gearBtn.focus();
+      } else if (e.key === 'Escape' && !this.fbMenu.hidden) {
+        this.toggleFeedback(false);
+        this.fbBtn.focus();
       }
       e.stopPropagation();
     });
@@ -649,12 +692,34 @@ export class Bar {
   }
 
   private onOutsidePointer = (e: PointerEvent): void => {
-    if (!this.panel.hidden && !e.composedPath().includes(this.host)) this.togglePanel(false);
+    if (e.composedPath().includes(this.host)) return;
+    if (!this.panel.hidden) this.togglePanel(false);
+    if (!this.fbMenu.hidden) this.toggleFeedback(false);
   };
 
   private togglePanel(open = this.panel.hidden): void {
+    if (open) this.toggleFeedback(false);
     this.panel.hidden = !open;
     this.gearBtn.setAttribute('aria-expanded', String(open));
+  }
+
+  private toggleFeedback(open = this.fbMenu.hidden): void {
+    if (open) this.togglePanel(false);
+    this.fbMenu.hidden = !open;
+    this.fbBtn.setAttribute('aria-expanded', String(open));
+  }
+
+  private initFeedback(): void {
+    this.fbBtn.addEventListener('click', () => this.toggleFeedback());
+    const includeUrl = this.fbMenu.querySelector<HTMLButtonElement>('#nm-fb-url')!;
+    const flip = () => includeUrl.setAttribute('aria-checked', String(includeUrl.getAttribute('aria-checked') !== 'true'));
+    includeUrl.addEventListener('click', flip);
+    for (const item of this.fbMenu.querySelectorAll<HTMLButtonElement>('[data-kind]')) {
+      item.addEventListener('click', () => {
+        this.toggleFeedback(false);
+        this.cb.onFeedback(item.dataset.kind as FeedbackKind, includeUrl.getAttribute('aria-checked') === 'true');
+      });
+    }
   }
 
   private update(patch: Partial<Settings>): void {

@@ -52,6 +52,8 @@ by default it follows the page's language.
 - **Convenience:** per-tab toggle that survives reloads and navigation, keyboard shortcut
   **Alt+Shift+N**, and the opening of a page prepared in advance so playback starts
   instantly
+- **Feedback:** a button in the bar (and links on the options page) opens a pre-filled
+  GitHub issue for a bug report or feature suggestion
 
 <table>
   <tr>
@@ -147,6 +149,13 @@ created at random, copied, renamed, randomised, deleted, previewed and used. "Co
 recipe" puts a compact recipe on the clipboard; "Download" saves a full voice file in
 Supertonic's `voice_styles` format with the recipe in its metadata. Recipes are stored in
 `chrome.storage.sync` and sent with each synthesis request.
+
+**Feedback** goes through GitHub's issue forms (`.github/ISSUE_TEMPLATE/`). The bar's
+feedback button opens a new issue whose fields are pre-filled through the address
+(`src/shared/feedback.ts`): extension, browser and OS versions, engine status, voice,
+speed and the main settings — never page content. The page's address is added only
+when the "Include this page's address" switch is on. The reporter reviews the issue on
+GitHub and submits it with their own account, so the extension holds no tokens.
 
 **Highlighting** uses the CSS Custom Highlight API, so the page's DOM is never
 modified. Colours are derived from the composited background behind the text:

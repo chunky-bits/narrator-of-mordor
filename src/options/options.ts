@@ -5,6 +5,7 @@ import { chromeEngineSend, EngineClient } from '../content/engine-client';
 import { loadEngineConfigs, onEngineConfigsChanged, saveEngineConfigs, type EngineConfigs } from '../engines/config';
 import { ENGINES, languageLabel, voiceKey } from '../engines/registry';
 import { defaultParams, type EngineMeta, type ParamSpec } from '../engines/types';
+import { diagnostics, issueUrl, type FeedbackKind } from '../shared/feedback';
 import type { StatusResponse } from '../shared/messages';
 import { loadSettings, onSettingsChanged, saveSettings, type Settings } from '../shared/settings';
 import { THEMES, type ThemeMode } from '../shared/themes';
@@ -263,6 +264,14 @@ async function previewVoice(voice: string, voiceLang: string): Promise<void> {
   }
 }
 
+/** Pre-fill the footer's feedback links with the current diagnostics. */
+async function updateFeedbackLinks(): Promise<void> {
+  const diag = await diagnostics({ settings, engineStatus: statuses });
+  for (const link of document.querySelectorAll<HTMLAnchorElement>('[data-feedback]')) {
+    link.href = issueUrl(link.dataset.feedback as FeedbackKind, diag);
+  }
+}
+
 /** Ask the offscreen document which engines are loaded and on what device. */
 async function refreshStatus(): Promise<void> {
   let next: Record<string, string> = {};
@@ -276,6 +285,7 @@ async function refreshStatus(): Promise<void> {
     statuses = next;
     render();
   }
+  void updateFeedbackLinks(); // also picks up settings changes
 }
 
 const recipesOf = (voices: CustomVoice[]) => voices.map((v) => v.id + recipeJson(v, v.name)).join('|');

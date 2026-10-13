@@ -1,0 +1,28 @@
+name: Feature suggestion
+description: An idea to make Narrator of Mordor better
+title: "[Idea] "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like?
+      description: Describe the feature or change.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why would it help?
+      description: The problem it solves or the situation you use it in.
+  - type: input
+    id: page-url
+    attributes:
+      label: Page address (optional)
+      description: A page where the feature would help, if any.
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Version
+      description: Filled in by the extension.
+      render: text

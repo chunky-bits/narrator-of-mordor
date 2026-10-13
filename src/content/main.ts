@@ -8,7 +8,8 @@ import {
   recipeJson,
   type CustomVoice,
 } from '../engines/supertonic/voices';
-import type { ContentMessage } from '../shared/messages';
+import { diagnostics, issueUrl, type FeedbackKind } from '../shared/feedback';
+import type { BackgroundRequest, ContentMessage, StatusResponse } from '../shared/messages';
 import { loadSettings, onSettingsChanged, saveSettings, type Settings } from '../shared/settings';
 import { Bar } from './bar';
 import { chromeEngineSend, EngineClient, type EngineSend } from './engine-client';
@@ -29,6 +30,23 @@ export function init(send: EngineSend = chromeEngineSend): void {
   let engines: EngineConfigs = {};
   let customVoices: CustomVoice[] = [];
   let saveTimer = 0;
+  let lastError = '';
+
+  /** Engine runtime status from the offscreen document; empty when no engine has run yet. */
+  const engineStatus = async (): Promise<Record<string, string>> => {
+    try {
+      const res = (await chrome.runtime.sendMessage({ target: 'offscreen', type: 'status' })) as StatusResponse | undefined;
+      return res?.ok ? res.engines : {};
+    } catch {
+      return {}; // no offscreen document
+    }
+  };
+
+  const openFeedback = async (kind: FeedbackKind, includePageUrl: boolean) => {
+    const diag = await diagnostics({ settings, engineStatus: await engineStatus(), pageLang: document.documentElement.lang, lastError });
+    const url = issueUrl(kind, diag, includePageUrl ? location.href : undefined);
+    void chrome.runtime.sendMessage({ type: 'narmor:open-feedback', url } satisfies BackgroundRequest);
+  };
 
   /** If the selected voice's engine is disabled (or gone), switch to an available voice. */
   const ensureVoice = (s: Settings): Settings => {
@@ -61,6 +79,7 @@ export function init(send: EngineSend = chromeEngineSend): void {
         saveTimer = window.setTimeout(() => void saveSettings(next), 300);
       },
       onOpenEngineSettings: () => void chrome.runtime.sendMessage({ type: 'narmor:open-options' }),
+      onFeedback: (kind, includePageUrl) => void openFeedback(kind, includePageUrl),
     });
     bar.setEngines(engines);
     bar.setCustomVoices(customVoices);
@@ -71,7 +90,10 @@ export function init(send: EngineSend = chromeEngineSend): void {
         onState: (state, detail) => bar.setState(state, detail),
         onProgress: (i, total) => bar.setProgress(i, total),
         onPosition: (fraction) => bar.setPosition(fraction),
-        onError: (message) => bar.showError(message),
+        onError: (message) => {
+          lastError = message;
+          bar.showError(message);
+        },
         onWordRate: (wpm) => bar.setBaseWpm(wpm),
         onWord: (prev, word, next) => bar.setRsvpWord(prev, word, next),
       },

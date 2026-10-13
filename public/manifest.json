@@ -4,6 +4,7 @@
   "short_name": "Narmor",
   "description": "Reads web pages aloud with a local, private Kokoro voice — with sentence and word highlighting.",
   "version": "0.1.0",
+  "homepage_url": "https://github.com/chunky-bits/narrator-of-mordor",
   "minimum_chrome_version": "116",
   "icons": {
     "16": "icons/icon-16.png",

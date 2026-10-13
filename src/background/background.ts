@@ -1,5 +1,6 @@
 // Service worker: per-tab on/off state, toolbar/shortcut toggle, and the lifetime
 // of the offscreen document that hosts the TTS model.
+import { isIssueUrl } from '../shared/feedback';
 import { OFFSCREEN_PATH, type BackgroundRequest, type ContentMessage } from '../shared/messages';
 
 const tabKey = (tabId: number) => `tab:${tabId}`;
@@ -95,6 +96,11 @@ chrome.runtime.onMessage.addListener((msg: BackgroundRequest & { target?: string
       return true;
     case 'narmor:open-options':
       void chrome.runtime.openOptionsPage();
+      return false;
+    case 'narmor:open-feedback':
+      if (isIssueUrl(msg.url)) {
+        void chrome.tabs.create({ url: msg.url, openerTabId: tabId, index: sender.tab ? sender.tab.index + 1 : undefined });
+      }
       return false;
     case 'narmor:ensure-engine':
       ensureEngine().then(

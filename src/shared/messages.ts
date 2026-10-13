@@ -6,7 +6,9 @@ import type { ChunkingHint, ParamValues } from '../engines/types';
 export type BackgroundRequest =
   | { type: 'narmor:get-tab-state' }
   | { type: 'narmor:ensure-engine' }
-  | { type: 'narmor:open-options' };
+  | { type: 'narmor:open-options' }
+  /** Open a pre-filled feedback issue on GitHub in a new tab. */
+  | { type: 'narmor:open-feedback'; url: string };
 
 /** background → content */
 export type ContentMessage = { type: 'narmor:set-enabled'; enabled: boolean };

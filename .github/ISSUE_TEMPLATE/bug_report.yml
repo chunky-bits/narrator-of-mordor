@@ -1,0 +1,39 @@
+name: Bug report
+description: Something doesn't work as expected
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! If you opened this from the extension, the diagnostics below are filled in for you.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the problem. Mention the page or kind of page if it matters.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open …
+        2. Select …
+        3. Press play …
+  - type: input
+    id: page-url
+    attributes:
+      label: Page address (optional)
+      description: Only if you are happy to share it publicly.
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: Extension version, browser, engine and settings.
+      render: text
