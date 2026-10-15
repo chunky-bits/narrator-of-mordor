@@ -12,7 +12,7 @@ The **summary** shown in the store comes from the manifest's `description`
 
 ## Store listing tab
 
-**Category:** Accessibility (if not offered for your account: Productivity › Tools)
+**Category:** Make Chrome Yours › Accessibility (alternative: Productivity › Tools)
 
 **Language:** English
 
@@ -53,6 +53,7 @@ Voice models: Kokoro-82M (Apache-2.0) and Supertonic 3 (OpenRAIL-M).
 | Store icon (128×128) | `public/icons/icon-128.png` |
 | Screenshots (1280×800) | `store/screenshots/1-reading.png`, `2-rsvp.png`, `3-settings.png`, `4-options.png` |
 | Small promo tile (440×280) | `store/promo-small-440x280.png` |
+| Marquee promo tile (1400×560) | `store/promo-marquee-1400x560.png` |
 
 Screenshot captions, if asked: "Reading with sentence and word highlighting",
 "Speed reading (RSVP) in the Gondor light theme", "Settings with colour themes",
